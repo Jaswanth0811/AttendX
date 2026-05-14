@@ -74,7 +74,7 @@ class AnalyticsViewModel @Inject constructor(
                     totalDays = tDates.size,
                     targetPercentage = target,
                     overallPercentage = calculateAttendancePercentage(present, total),
-                    subjectStats = emptyList(),
+                    subjectStats = _uiState.value.subjectStats,
                     isLoading = false
                 ) to Pair(subjects, target)
             }.collect { (state, data) ->

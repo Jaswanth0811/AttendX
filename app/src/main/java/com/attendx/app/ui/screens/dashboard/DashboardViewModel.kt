@@ -100,9 +100,9 @@ class DashboardViewModel @Inject constructor(
                     targetPercentage = target,
                     todaySlots = slots,
                     subjects = subjects,
-                    subjectAttendance = emptyList(), // loaded separately
+                    subjectAttendance = _uiState.value.subjectAttendance,
                     streak = DateUtils.calculateStreak(presentDates as List<Long>),
-                    lowAttendanceSubjects = emptyList(),
+                    lowAttendanceSubjects = _uiState.value.lowAttendanceSubjects,
                     isLoading = false
                 )
             }.collect { state ->
