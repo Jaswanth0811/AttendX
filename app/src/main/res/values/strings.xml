@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AttendX</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_timetable">Timetable</string>
+    <string name="nav_attendance">Attendance</string>
+    <string name="nav_analytics">Analytics</string>
+    <string name="nav_settings">Settings</string>
+    <string name="add_subject">Add Subject</string>
+    <string name="edit_subject">Edit Subject</string>
+    <string name="mark_attendance">Mark Attendance</string>
+    <string name="save_attendance">Save Attendance</string>
+    <string name="present">Present</string>
+    <string name="absent">Absent</string>
+    <string name="cancelled">Cancelled</string>
+    <string name="free_period">Free Period</string>
+    <string name="seminar">Seminar</string>
+    <string name="dark_mode">Dark Mode</string>
+    <string name="backup_data">Backup Data</string>
+    <string name="export_csv">Export to CSV</string>
+    <string name="semester_setup">Semester Setup</string>
+    <string name="tagline">Track Smart. Attend Better.</string>
+</resources>
