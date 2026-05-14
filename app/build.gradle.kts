@@ -14,8 +14,8 @@ android {
         applicationId = "com.attendx.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "4.3.3"
+        versionCode = 11
+        versionName = "4.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
