@@ -120,8 +120,13 @@ fun DashboardScreen(
                                 percentage = state.overallPercentage,
                                 size = 130.dp,
                                 strokeWidth = 14.dp,
-                                progressColor = if (state.overallPercentage >= state.targetPercentage) PresentGreen else AbsentRed,
-                                label = "Overall"
+                                progressColor = when {
+                                    state.totalClasses == 0 -> MaterialTheme.colorScheme.outline
+                                    state.overallPercentage >= state.targetPercentage -> PresentGreen
+                                    else -> AbsentRed
+                                },
+                                label = "Overall",
+                                customText = if (state.totalClasses == 0) "—" else null
                             )
                             Spacer(Modifier.width(24.dp))
                             Column {

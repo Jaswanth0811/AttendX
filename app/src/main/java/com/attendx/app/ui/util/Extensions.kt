@@ -22,7 +22,7 @@ fun Float.toPercentageString(): String {
 }
 
 fun calculateAttendancePercentage(present: Int, total: Int): Float {
-    return if (total > 0) (present.toFloat() / total.toFloat()) * 100f else 100f
+    return if (total > 0) (present.toFloat() / total.toFloat()) * 100f else 0f
 }
 
 fun calculateSafeBunks(attended: Int, total: Int, targetPercent: Float = 75f): Int {

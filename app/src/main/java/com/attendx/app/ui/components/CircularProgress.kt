@@ -35,7 +35,8 @@ fun AnimatedCircularProgress(
     trackColor: Color = MaterialTheme.colorScheme.surfaceVariant,
     animationDuration: Int = 1200,
     showPercentageText: Boolean = true,
-    label: String? = null
+    label: String? = null,
+    customText: String? = null
 ) {
     var animationPlayed by remember { mutableFloatStateOf(0f) }
     val currentPercentage by animateFloatAsState(
@@ -78,7 +79,7 @@ fun AnimatedCircularProgress(
         if (showPercentageText) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "${currentPercentage.toInt()}%",
+                    text = customText ?: "${currentPercentage.toInt()}%",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface

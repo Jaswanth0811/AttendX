@@ -108,7 +108,12 @@ fun AnalyticsScreen(
                         AnimatedCircularProgress(
                             percentage = state.overallPercentage,
                             size = 160.dp, strokeWidth = 16.dp,
-                            progressColor = if (state.overallPercentage >= state.targetPercentage) PresentGreen else AbsentRed
+                            progressColor = when {
+                                state.overallTotal == 0 -> MaterialTheme.colorScheme.outline
+                                state.overallPercentage >= state.targetPercentage -> PresentGreen
+                                else -> AbsentRed
+                            },
+                            customText = if (state.overallTotal == 0) "—" else null
                         )
                     }
                 }
