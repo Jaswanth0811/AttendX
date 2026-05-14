@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -74,7 +75,7 @@ class AnalyticsViewModel @Inject constructor(
                     totalDays = tDates.size,
                     targetPercentage = target,
                     overallPercentage = calculateAttendancePercentage(present, total),
-                    subjectStats = _uiState.value.subjectStats,
+                    subjectStats = emptyList(),
                     isLoading = false
                 ) to Pair(subjects, target)
             }.collect { (state, data) ->
@@ -87,16 +88,8 @@ class AnalyticsViewModel @Inject constructor(
     private fun loadSubjectStats(subjects: List<Subject>, targetPercent: Float) {
         viewModelScope.launch {
             val stats = subjects.map { sub ->
-                var p = 0; var t = 0
-                val j1 = launch {
-                    attendanceRepository.getPresentCountForSubject(sub.id)
-                        .collect { p = it; return@collect }
-                }
-                val j2 = launch {
-                    attendanceRepository.getTotalCountForSubject(sub.id)
-                        .collect { t = it; return@collect }
-                }
-                j1.join(); j2.join()
+                val p = attendanceRepository.getPresentCountForSubject(sub.id).first()
+                val t = attendanceRepository.getTotalCountForSubject(sub.id).first()
                 SubjectStat(sub, p, t, calculateAttendancePercentage(p, t),
                     calculateSafeBunks(p, t, targetPercent),
                     calculateClassesNeeded(p, t, targetPercent))

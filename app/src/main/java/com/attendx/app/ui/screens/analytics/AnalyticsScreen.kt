@@ -158,9 +158,14 @@ fun AnalyticsScreen(
                                                     fontWeight = FontWeight.SemiBold)
                                             }
                                         }
+                                    } else {
+                                        Text("🟢 No classes recorded yet",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = PresentGreen,
+                                            fontWeight = FontWeight.SemiBold)
                                     }
                                 }
-                                Text("${stat.percentage.toInt()}%",
+                                Text(if (stat.total > 0) "${stat.percentage.toInt()}%" else "—",
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = stat.subject.colorHex.toComposeColor())

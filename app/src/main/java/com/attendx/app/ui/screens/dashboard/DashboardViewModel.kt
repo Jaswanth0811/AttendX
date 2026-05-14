@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.attendx.app.data.repository.SettingsRepository
@@ -100,9 +101,9 @@ class DashboardViewModel @Inject constructor(
                     targetPercentage = target,
                     todaySlots = slots,
                     subjects = subjects,
-                    subjectAttendance = _uiState.value.subjectAttendance,
+                    subjectAttendance = emptyList(), // loaded separately
                     streak = DateUtils.calculateStreak(presentDates as List<Long>),
-                    lowAttendanceSubjects = _uiState.value.lowAttendanceSubjects,
+                    lowAttendanceSubjects = emptyList(),
                     isLoading = false
                 )
             }.collect { state ->
@@ -116,24 +117,15 @@ class DashboardViewModel @Inject constructor(
     private fun loadSubjectAttendance(subjects: List<Subject>, targetPercent: Float) {
         viewModelScope.launch {
             val subjectAttList = subjects.map { subject ->
-                var pCount = 0
-                var tCount = 0
-                val j1 = launch {
-                    attendanceRepository.getPresentCountForSubject(subject.id)
-                        .collect { pCount = it; return@collect }
-                }
-                val j2 = launch {
-                    attendanceRepository.getTotalCountForSubject(subject.id)
-                        .collect { tCount = it; return@collect }
-                }
-                j1.join(); j2.join()
+                val pCount = attendanceRepository.getPresentCountForSubject(subject.id).first()
+                val tCount = attendanceRepository.getTotalCountForSubject(subject.id).first()
                 val pct = calculateAttendancePercentage(pCount, tCount)
                 SubjectAttendanceInfo(subject, pCount, tCount, pct,
                     calculateSafeBunks(pCount, tCount, targetPercent))
             }
             _uiState.value = _uiState.value.copy(
                 subjectAttendance = subjectAttList,
-                lowAttendanceSubjects = subjectAttList.filter { it.percentage < targetPercent }
+                lowAttendanceSubjects = subjectAttList.filter { it.totalCount > 0 && it.percentage < targetPercent }
             )
         }
     }
