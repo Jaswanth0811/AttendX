@@ -1,23 +1,75 @@
-# AttendX 📚
+<div align="center">
 
-AttendX is a beautiful, modern, and intelligent attendance tracking application built for Android using Jetpack Compose and Material 3 design principles. Never lose track of your classes again with smart predictions and a seamless timetable experience!
+  <img src="AttendX%20Logo.png" alt="AttendX" width="200" />
+  <br />
+  <br />
 
-## 🚀 Key Features
+  [![Contributors][contributors-shield]][contributors-url]
+  [![Forks][forks-shield]][forks-url]
+  [![Stargazers][stars-shield]][stars-url]
+  [![Issues][issues-shield]][issues-url]
 
-*   **Smart Dashboard:** Get a quick overview of your overall attendance percentage, along with day-wise and period-wise breakdowns.
-*   **Dynamic Timetable:** Easily configure your weekly schedule. The app automatically knows what classes you have today.
-*   **Calendar View:** Look back at your attendance history. Mark entire days as Holidays or Absent with custom reasons, and watch the timetable automatically adjust!
-*   **Smart Predictions:** The built-in Safe Bunk Calculator tells you exactly how many classes you can afford to miss, or how many you need to attend to reach your target.
-*   **Customizable Targets:** Set your own attendance goal (e.g., 75%, 80%) in the settings, and let the app do the math for you.
-*   **Analytics:** Deep dive into your subject-wise performance with beautiful, easy-to-read cards and visual indicators.
-*   **Material 3 UI:** Enjoy a premium, dynamic, and responsive user interface with glassmorphism effects and modern typography.
+  <p>
+    A premium, modern attendance management app for Android built with Jetpack Compose and Material 3.
+    <br />
+    Smart Predictions • Dynamic Timetable • Premium UI
+  </p>
 
-## 🛠️ Technology Stack
-*   **UI:** Jetpack Compose, Material 3
-*   **Architecture:** MVVM (Model-View-ViewModel)
-*   **Database:** Room Database (Local Persistence)
-*   **Dependency Injection:** Dagger Hilt
-*   **Coroutines & Flow:** Asynchronous data handling
+</div>
 
-## 📥 Installation
-Check out the [Releases page](https://github.com/Jaswanth0811/AttendX/releases) to download the latest `.apk` file and install it directly on your Android device!
+## About
+
+AttendX is a high-end attendance tracking solution designed for students who value aesthetics and functionality. It features a modern dashboard, automated timetable-based tracking, and a smart analytics engine that predicts your future attendance status based on custom goals.
+
+The app is built natively for Android using **Kotlin** and **Jetpack Compose**, following clean architecture principles.
+
+## Features
+
+- **Smart Predictions**: Real-time calculations of how many classes you can miss or need to attend to reach your goal.
+- **Dynamic Timetable**: Automated attendance prompts based on your daily schedule and easy configuration.
+- **Calendar View**: Deep historical tracking with the ability to mark holidays and adjust records retroactively.
+- **Rich Analytics**: Visual insights with progress rings, bar charts, and subject-wise details.
+- **Modern UI**: A premium experience with glassmorphism, smooth animations, and Material 3 design.
+- **Data Management**: Backup/Restore functionality and CSV exports.
+
+## Installation
+
+### Android
+
+Download the latest Android build from [GitHub Releases](https://github.com/Jaswanth0811/AttendX/releases/latest).
+
+## Development
+
+```bash
+git clone https://github.com/Jaswanth0811/AttendX.git
+cd AttendX
+./gradlew assembleDebug
+```
+
+## Built With
+
+- **Kotlin** & **Jetpack Compose**
+- **Room Database** for local persistence
+- **Dagger Hilt** for Dependency Injection
+- **Coroutines & Flow** for reactive data
+- **Material 3** Design System
+
+## Star History
+
+<a href="https://www.star-history.com/#Jaswanth0811/AttendX&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Jaswanth0811/AttendX&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Jaswanth0811/AttendX&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Jaswanth0811/AttendX&type=date&legend=top-left" />
+ </picture>
+</a>
+
+<!-- MARKDOWN LINKS & IMAGES -->
+[contributors-shield]: https://img.shields.io/github/contributors/Jaswanth0811/AttendX.svg?style=for-the-badge
+[contributors-url]: https://github.com/Jaswanth0811/AttendX/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/Jaswanth0811/AttendX.svg?style=for-the-badge
+[forks-url]: https://github.com/Jaswanth0811/AttendX/network/members
+[stars-shield]: https://img.shields.io/github/stars/Jaswanth0811/AttendX.svg?style=for-the-badge
+[stars-url]: https://github.com/Jaswanth0811/AttendX/stargazers
+[issues-shield]: https://img.shields.io/github/issues/Jaswanth0811/AttendX.svg?style=for-the-badge
+[issues-url]: https://github.com/Jaswanth0811/AttendX/issues
