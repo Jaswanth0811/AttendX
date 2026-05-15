@@ -18,6 +18,7 @@ import com.attendx.app.ui.screens.settings.SettingsScreen
 import com.attendx.app.ui.screens.splash.SplashScreen
 import com.attendx.app.ui.screens.subjects.SubjectScreen
 import com.attendx.app.ui.screens.timetable.TimetableScreen
+import com.attendx.app.ui.screens.smartimport.SmartImportScreen
 
 @Composable
 fun NavGraph(
@@ -108,7 +109,14 @@ fun NavGraph(
             SettingsScreen(
                 darkMode = darkMode,
                 onToggleDarkMode = onToggleDarkMode,
-                onNavigateToHistory = { navController.navigate(Screen.AttendanceHistory.route) }
+                onNavigateToHistory = { navController.navigate(Screen.AttendanceHistory.route) },
+                onNavigateToSmartImport = { navController.navigate(Screen.SmartImport.route) }
+            )
+        }
+
+        composable(Screen.SmartImport.route) {
+            SmartImportScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 

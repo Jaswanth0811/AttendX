@@ -22,7 +22,9 @@ class SubjectRepository @Inject constructor(
 
     suspend fun updateSubject(subject: Subject) = subjectDao.update(subject)
 
-    suspend fun deleteSubject(subject: Subject) = subjectDao.delete(subject)
+    suspend fun deleteSubject(subject: Subject) = subjectDao.update(subject)
+
+    suspend fun getSubjectByName(name: String): Subject? = subjectDao.getSubjectByName(name)
 
     suspend fun deleteAll() = subjectDao.deleteAll()
 }

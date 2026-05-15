@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Code
@@ -66,7 +67,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
     darkMode: Boolean,
     onToggleDarkMode: (Boolean) -> Unit,
-    onNavigateToHistory: () -> Unit = {}
+    onNavigateToHistory: () -> Unit = {},
+    onNavigateToSmartImport: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -195,6 +197,9 @@ fun SettingsScreen(
 
             SettingsActionCard(Icons.Default.FileDownload, "Export to CSV",
                 "Export attendance as CSV file") { viewModel.exportCsv() }
+
+            SettingsActionCard(Icons.Default.AutoFixHigh, "Smart Import",
+                "Add subjects & timetable via Scan or Files") { onNavigateToSmartImport() }
 
             // About
             Text("About", style = MaterialTheme.typography.titleSmall,

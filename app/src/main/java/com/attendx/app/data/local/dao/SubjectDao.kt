@@ -33,6 +33,9 @@ interface SubjectDao {
     @Query("SELECT COUNT(*) FROM subjects")
     fun getSubjectCount(): Flow<Int>
 
+    @Query("SELECT * FROM subjects WHERE name = :name LIMIT 1")
+    suspend fun getSubjectByName(name: String): Subject?
+
     @Query("DELETE FROM subjects")
     suspend fun deleteAll()
 }

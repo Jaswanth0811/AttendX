@@ -15,4 +15,5 @@ sealed class Screen(val route: String) {
     data object Analytics : Screen("analytics")
     data object Settings : Screen("settings")
     data object Subjects : Screen("subjects")
+    data object SmartImport : Screen("smart_import")
 }
