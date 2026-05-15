@@ -53,9 +53,22 @@ fun SmartImportScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-            if (content != null) {
-                viewModel.processCsv(content)
+            val type = context.contentResolver.getType(uri)
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            
+            if (bytes != null) {
+                when {
+                    uri.toString().endsWith(".csv", true) || type == "text/comma-separated-values" -> {
+                        viewModel.processCsv(String(bytes))
+                    }
+                    uri.toString().endsWith(".xls", true) || uri.toString().endsWith(".xlsx", true) || 
+                    type == "application/vnd.ms-excel" || type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> {
+                        viewModel.processExcel(bytes)
+                    }
+                    uri.toString().endsWith(".pdf", true) || type == "application/pdf" -> {
+                        viewModel.processPdf(bytes, context)
+                    }
+                }
             }
         }
     }
@@ -136,9 +149,16 @@ fun SmartImportScreen(
 
             ImportMethodCard(
                 icon = Icons.Default.Description,
-                title = "Import CSV File",
-                subtitle = "Upload a .csv file with your subject names and timings.",
-                onClick = { fileLauncher.launch("text/comma-separated-values") }
+                title = "Import CSV / Excel",
+                subtitle = "Upload a .csv, .xls, or .xlsx file with your subjects and timings.",
+                onClick = { fileLauncher.launch("*/*") }
+            )
+
+            ImportMethodCard(
+                icon = Icons.Default.TableChart,
+                title = "Import PDF",
+                subtitle = "Extract text and tables from a digital PDF timetable.",
+                onClick = { fileLauncher.launch("application/pdf") }
             )
             
             // Preview Section

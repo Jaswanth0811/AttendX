@@ -18,6 +18,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
+import java.io.InputStream
+import org.apache.poi.ss.usermodel.WorkbookFactory
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.tom_roush.pdfbox.pdmodel.PDDocument
 
 data class ImportState(
     val isLoading: Boolean = false,
@@ -61,6 +66,56 @@ class ImportViewModel @Inject constructor(
                 ) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = "Failed to process image: ${e.message}") }
+            }
+        }
+    }
+
+    fun processExcel(bytes: ByteArray) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val workbook = WorkbookFactory.create(bytes.inputStream())
+                val sheet = workbook.getSheetAt(0)
+                val parsedSlots = mutableListOf<PendingImportSlot>()
+                
+                sheet.forEach { row ->
+                    val subject = row.getCell(0)?.toString() ?: ""
+                    val day = row.getCell(1)?.toString()?.toDoubleOrNull()?.toInt() ?: 1
+                    val start = row.getCell(2)?.toString() ?: ""
+                    val end = row.getCell(3)?.toString() ?: ""
+                    
+                    if (subject.length > 2) {
+                        parsedSlots.add(
+                            PendingImportSlot(
+                                subjectName = subject,
+                                dayOfWeek = day,
+                                startTime = start,
+                                endTime = end
+                            )
+                        )
+                    }
+                }
+                _uiState.update { it.copy(isLoading = false, detectedSlots = parsedSlots) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "Failed to parse Excel: ${e.message}") }
+            }
+        }
+    }
+
+    fun processPdf(bytes: ByteArray, context: android.content.Context) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                PDFBoxResourceLoader.init(context)
+                val document = PDDocument.load(bytes)
+                val stripper = PDFTextStripper()
+                val text = stripper.getText(document)
+                document.close()
+                
+                val parsedSlots = OCRParser.parseTimetable(text)
+                _uiState.update { it.copy(isLoading = false, detectedSlots = parsedSlots) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "Failed to parse PDF: ${e.message}") }
             }
         }
     }

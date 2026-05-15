@@ -14,8 +14,8 @@ android {
         applicationId = "com.attendx.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "4.5.0"
+        versionCode = 13
+        versionName = "4.6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -97,4 +97,8 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+    
+    // Excel & PDF
+    implementation(libs.poi.ooxml)
+    implementation(libs.pdfbox.android)
 }
