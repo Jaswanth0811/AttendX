@@ -14,8 +14,8 @@ android {
         applicationId = "com.attendx.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "4.6.0"
+        versionCode = 14
+        versionName = "4.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -101,4 +101,7 @@ dependencies {
     // Excel & PDF
     implementation(libs.poi.ooxml)
     implementation(libs.pdfbox.android)
+    
+    // Gemini AI
+    implementation(libs.google.generativeai)
 }

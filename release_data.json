@@ -1,0 +1,9 @@
+{
+  "tag_name": "v4.6.0",
+  "target_commitish": "main",
+  "name": "v4.6.0 - Smart Import: Excel & PDF Support",
+  "body": "## What's New\n- **Excel Support**: Import subjects and schedules from .xls and .xlsx files.\n- **PDF Support**: Extract timetable data directly from digital PDF documents.\n- **Improved File Picker**: Unified picker for CSV, Excel, and PDF formats.\n- **Streamlined Workflow**: Faster processing and better error handling for binary files.",
+  "draft": false,
+  "prerelease": false,
+  "generate_release_notes": false
+}

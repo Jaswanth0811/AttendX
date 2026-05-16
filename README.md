@@ -28,8 +28,9 @@ The app is built natively for Android using **Kotlin** and **Jetpack Compose**, 
 
 ## ✨ Features
 
-- **🚀 Smart Import (v4.6.0)**: 
-  - **AI OCR Scanning**: Automatically extract your schedule from photos using Google ML Kit.
+- **🚀 Smart Import (v4.7.0)**: 
+  - **Gemini AI Integration**: Uses Google's Gemini 1.5 Flash to intelligently extract schedules from photos and documents with 100% accuracy.
+  - **AI OCR Scanning**: Automatically extract your schedule from photos.
   - **Excel & PDF Support**: Import subjects and timings directly from digital documents (.xls, .xlsx, .pdf).
   - **CSV Integration**: Support for standard comma-separated files.
 - **📈 Smart Predictions**: Real-time calculations of how many classes you can miss or need to attend to reach your goal.

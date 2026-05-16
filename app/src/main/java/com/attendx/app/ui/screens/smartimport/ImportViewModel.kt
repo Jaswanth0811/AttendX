@@ -21,8 +21,13 @@ import javax.inject.Inject
 import java.io.InputStream
 import org.apache.poi.ss.usermodel.WorkbookFactory
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
-import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.attendx.app.data.util.AIConfig
+import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.content
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
 
 data class ImportState(
     val isLoading: Boolean = false,
@@ -51,6 +56,48 @@ class ImportViewModel @Inject constructor(
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
 
     fun processImage(bitmap: Bitmap) {
+        // Option 1: AI Processing (Better)
+        if (AIConfig.GEMINI_API_KEY != "YOUR_API_KEY_HERE") {
+            processImageWithAI(bitmap)
+        } else {
+            // Option 2: Local OCR (Offline fallback)
+            processImageLocal(bitmap)
+        }
+    }
+
+    private fun processImageWithAI(bitmap: Bitmap) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val generativeModel = GenerativeModel(
+                    modelName = "gemini-1.5-flash",
+                    apiKey = AIConfig.GEMINI_API_KEY
+                )
+
+                val prompt = content {
+                    image(bitmap)
+                    text("Extract the timetable from this image. Return a JSON array of objects with fields: 'subjectName', 'dayOfWeek' (1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday, 7=Sunday), 'startTime' (format HH:mm), 'endTime' (format HH:mm). Return only the JSON array, no extra text.")
+                }
+
+                val response = generativeModel.generateContent(prompt)
+                val rawText = response.text ?: "[]"
+                val jsonString = rawText.substringAfter("[").substringBeforeLast("]").let { "[$it]" }
+                
+                val typeToken = object : TypeToken<List<PendingImportSlot>>() {}.type
+                val parsedSlots: List<PendingImportSlot> = Gson().fromJson(jsonString, typeToken)
+                
+                _uiState.update { it.copy(
+                    isLoading = false,
+                    detectedSlots = parsedSlots
+                ) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "AI Processing failed: ${e.message}. Falling back to local OCR...") }
+                processImageLocal(bitmap)
+            }
+        }
+    }
+
+    private fun processImageLocal(bitmap: Bitmap) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
@@ -65,7 +112,7 @@ class ImportViewModel @Inject constructor(
                     detectedSlots = parsedSlots
                 ) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Failed to process image: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, error = "Local OCR failed: ${e.message}") }
             }
         }
     }
@@ -112,10 +159,42 @@ class ImportViewModel @Inject constructor(
                 val text = stripper.getText(document)
                 document.close()
                 
-                val parsedSlots = OCRParser.parseTimetable(text)
-                _uiState.update { it.copy(isLoading = false, detectedSlots = parsedSlots) }
+                if (AIConfig.GEMINI_API_KEY != "YOUR_API_KEY_HERE") {
+                    processTextWithAI(text)
+                } else {
+                    val parsedSlots = OCRParser.parseTimetable(text)
+                    _uiState.update { it.copy(isLoading = false, detectedSlots = parsedSlots) }
+                }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = "Failed to parse PDF: ${e.message}") }
+            }
+        }
+    }
+
+    private fun processTextWithAI(text: String) {
+        viewModelScope.launch {
+            try {
+                val generativeModel = GenerativeModel(
+                    modelName = "gemini-1.5-flash",
+                    apiKey = AIConfig.GEMINI_API_KEY
+                )
+
+                val prompt = "Extract the timetable from this text. Return a JSON array of objects with fields: 'subjectName', 'dayOfWeek' (1=Mon, 2=Tue, etc.), 'startTime' (HH:mm), 'endTime' (HH:mm). Text:\n$text"
+
+                val response = generativeModel.generateContent(prompt)
+                val rawText = response.text ?: "[]"
+                val jsonString = rawText.substringAfter("[").substringBeforeLast("]").let { "[$it]" }
+                
+                val typeToken = object : TypeToken<List<PendingImportSlot>>() {}.type
+                val parsedSlots: List<PendingImportSlot> = Gson().fromJson(jsonString, typeToken)
+                
+                _uiState.update { it.copy(
+                    isLoading = false,
+                    detectedSlots = parsedSlots
+                ) }
+            } catch (e: Exception) {
+                val parsedSlots = OCRParser.parseTimetable(text)
+                _uiState.update { it.copy(isLoading = false, detectedSlots = parsedSlots, error = "AI Parsing failed, used local instead.") }
             }
         }
     }
