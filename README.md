@@ -8,6 +8,7 @@
   [![Forks][forks-shield]][forks-url]
   [![Stargazers][stars-shield]][stars-url]
   [![Issues][issues-shield]][issues-url]
+  [![License][license-shield]][license-url]
 
   <p>
     A premium, modern attendance management app for Android built with Jetpack Compose and Material 3.
@@ -54,6 +55,10 @@ cd AttendX
 - **Coroutines & Flow** for reactive data
 - **Material 3** Design System
 
+## License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
 ## Star History
 
 <a href="https://www.star-history.com/#Jaswanth0811/AttendX&type=date&legend=top-left">
@@ -73,3 +78,5 @@ cd AttendX
 [stars-url]: https://github.com/Jaswanth0811/AttendX/stargazers
 [issues-shield]: https://img.shields.io/github/issues/Jaswanth0811/AttendX.svg?style=for-the-badge
 [issues-url]: https://github.com/Jaswanth0811/AttendX/issues
+[license-shield]: https://img.shields.io/github/license/Jaswanth0811/AttendX.svg?style=for-the-badge
+[license-url]: https://github.com/Jaswanth0811/AttendX/blob/main/LICENSE
