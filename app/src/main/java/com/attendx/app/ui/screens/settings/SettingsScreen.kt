@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FileDownload
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Percent
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,11 +66,19 @@ import com.attendx.app.ui.util.DateUtils
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
-    darkMode: Boolean,
-    onToggleDarkMode: (Boolean) -> Unit,
     onNavigateToHistory: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    
+    val collegeStartTimeMinutes by viewModel.collegeStartTimeMinutes.collectAsStateWithLifecycle()
+    val collegeEndTimeMinutes by viewModel.collegeEndTimeMinutes.collectAsStateWithLifecycle()
+    val periodDurationMinutes by viewModel.periodDurationMinutes.collectAsStateWithLifecycle()
+    val lunchBreakDurationMinutes by viewModel.lunchBreakDurationMinutes.collectAsStateWithLifecycle()
+    val lunchPeriodIndex by viewModel.lunchPeriodIndex.collectAsStateWithLifecycle()
+    val periodsPerDayString by viewModel.periodsPerDayString.collectAsStateWithLifecycle()
+
+    var showTimetableSetup by remember { mutableStateOf(false) }
+    var showPerDaySetup by remember { mutableStateOf(false) }
 
     if (state.showSemesterDialog) {
         SemesterSetupSheet(
@@ -107,6 +117,36 @@ fun SettingsScreen(
         )
     }
 
+    if (showTimetableSetup) {
+        TimetableSetupSheet(
+            initialStartMins = collegeStartTimeMinutes,
+            initialEndMins = collegeEndTimeMinutes,
+            initialPeriodMins = periodDurationMinutes,
+            initialLunchMins = lunchBreakDurationMinutes,
+            initialLunchIndex = lunchPeriodIndex,
+            onSave = { start, end, period, lunch, lunchIdx ->
+                viewModel.setCollegeStartTimeMinutes(start)
+                viewModel.setCollegeEndTimeMinutes(end)
+                viewModel.setPeriodDurationMinutes(period)
+                viewModel.setLunchBreakDurationMinutes(lunch)
+                viewModel.setLunchPeriodIndex(lunchIdx)
+                showTimetableSetup = false
+            },
+            onDismiss = { showTimetableSetup = false }
+        )
+    }
+
+    if (showPerDaySetup) {
+        PerDayPeriodsSheet(
+            initialPeriodsString = periodsPerDayString,
+            onSave = { counts ->
+                viewModel.setPeriodsPerDayString(counts)
+                showPerDaySetup = false
+            },
+            onDismiss = { showPerDaySetup = false }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -124,29 +164,17 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Appearance
-            Text("Appearance", style = MaterialTheme.typography.titleSmall,
+            // Appearance section removed per user request
+
+            // Timetable Settings
+            Text("Timetable", style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
 
-            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                Row(
-                    Modifier.padding(16.dp).fillMaxWidth(),
-                    Arrangement.SpaceBetween, Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.DarkMode, null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text("Dark Mode", fontWeight = FontWeight.Medium)
-                            Text("Switch between light and dark theme",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Switch(checked = darkMode, onCheckedChange = onToggleDarkMode)
-                }
-            }
+            SettingsActionCard(Icons.Default.Schedule, "Global Schedule",
+                "Set college hours, period and lunch duration") { showTimetableSetup = true }
+
+            SettingsActionCard(Icons.Default.CalendarToday, "Daily Periods",
+                "Set how many periods run on each day") { showPerDaySetup = true }
 
             // Semester
             Text("Semester", style = MaterialTheme.typography.titleSmall,
@@ -220,7 +248,7 @@ fun SettingsScreen(
                             Text("Version $versionName",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Premium Attendance Tracker",
+                            Text("Developer: Jaswanth",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -232,7 +260,7 @@ fun SettingsScreen(
                     
                     TextButton(
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Jaswanth0811/AttendX"))
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/Jaswanth0811/AttendX/issues"))
                             context.startActivity(intent)
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -244,7 +272,7 @@ fun SettingsScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("View on GitHub", 
+                            Text("Suggestions and Issues on GitHub", 
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.primary)
                         }

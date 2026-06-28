@@ -48,6 +48,13 @@ class SettingsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
+    val collegeStartTimeMinutes = settingsRepository.collegeStartTimeMinutes
+    val collegeEndTimeMinutes = settingsRepository.collegeEndTimeMinutes
+    val periodDurationMinutes = settingsRepository.periodDurationMinutes
+    val lunchBreakDurationMinutes = settingsRepository.lunchBreakDurationMinutes
+    val lunchPeriodIndex = settingsRepository.lunchPeriodIndex
+    val periodsPerDayString = settingsRepository.periodsPerDayString
+
     init {
         viewModelScope.launch {
             semesterRepository.getActiveSemester().collect {
@@ -132,4 +139,10 @@ class SettingsViewModel @Inject constructor(
             }
         }
     }
+    fun setCollegeStartTimeMinutes(minutes: Int) = settingsRepository.setCollegeStartTimeMinutes(minutes)
+    fun setCollegeEndTimeMinutes(minutes: Int) = settingsRepository.setCollegeEndTimeMinutes(minutes)
+    fun setPeriodDurationMinutes(minutes: Int) = settingsRepository.setPeriodDurationMinutes(minutes)
+    fun setLunchBreakDurationMinutes(minutes: Int) = settingsRepository.setLunchBreakDurationMinutes(minutes)
+    fun setLunchPeriodIndex(index: Int) = settingsRepository.setLunchPeriodIndex(index)
+    fun setPeriodsPerDayString(daysString: String) = settingsRepository.setPeriodsPerDayString(daysString)
 }

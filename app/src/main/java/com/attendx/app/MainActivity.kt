@@ -24,32 +24,28 @@ import androidx.navigation.compose.rememberNavController
 import com.attendx.app.ui.components.BottomNavBar
 import com.attendx.app.ui.navigation.NavGraph
 import com.attendx.app.ui.navigation.Screen
+import com.attendx.app.ui.screens.setup.DailySetupPrompt
 import com.attendx.app.ui.theme.AttendXTheme
+import com.attendx.app.util.PeriodNotificationManager
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PeriodNotificationManager.createNotificationChannel(this)
         enableEdgeToEdge()
         setContent {
-            var darkMode by remember { mutableStateOf(false) }
-
-            AttendXTheme(darkTheme = darkMode) {
-                AttendXMainScreen(
-                    darkMode = darkMode,
-                    onToggleDarkMode = { darkMode = it }
-                )
+            AttendXTheme {
+                DailySetupPrompt()
+                AttendXMainScreen()
             }
         }
     }
 }
 
 @Composable
-fun AttendXMainScreen(
-    darkMode: Boolean,
-    onToggleDarkMode: (Boolean) -> Unit
-) {
+fun AttendXMainScreen() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -85,11 +81,7 @@ fun AttendXMainScreen(
         }
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
-            NavGraph(
-                navController = navController,
-                darkMode = darkMode,
-                onToggleDarkMode = onToggleDarkMode
-            )
+            NavGraph(navController = navController)
         }
     }
 }

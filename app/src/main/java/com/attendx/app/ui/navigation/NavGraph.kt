@@ -21,9 +21,7 @@ import com.attendx.app.ui.screens.timetable.TimetableScreen
 
 @Composable
 fun NavGraph(
-    navController: NavHostController,
-    darkMode: Boolean,
-    onToggleDarkMode: (Boolean) -> Unit
+    navController: NavHostController
 ) {
     NavHost(
         navController = navController,
@@ -106,8 +104,6 @@ fun NavGraph(
 
         composable(Screen.Settings.route) {
             SettingsScreen(
-                darkMode = darkMode,
-                onToggleDarkMode = onToggleDarkMode,
                 onNavigateToHistory = { navController.navigate(Screen.AttendanceHistory.route) }
             )
         }

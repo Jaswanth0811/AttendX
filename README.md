@@ -28,9 +28,12 @@ The app is built natively for Android using **Kotlin** and **Jetpack Compose**, 
 
 - **Smart Predictions**: Real-time calculations of how many classes you can miss or need to attend to reach your goal.
 - **Dynamic Timetable**: Automated attendance prompts based on your daily schedule and easy configuration.
+- **Daily Configurable Schedules**: Set period duration, lunch break exact time, and per-day customized periods (Monday to Saturday).
+- **Automated Period Notifications**: System notifications sent directly to your phone the exact minute each period finishes.
+- **Smart Half-Day Overrides**: Daily startup prompt allows you to override the usual timetable on short days or special events.
 - **Calendar View**: Deep historical tracking with the ability to mark holidays and adjust records retroactively.
 - **Rich Analytics**: Visual insights with progress rings, bar charts, and subject-wise details.
-- **Modern UI**: A premium experience with glassmorphism, smooth animations, and Material 3 design.
+- **Modern UI & Auto Dark Mode**: A premium experience with glassmorphism, smooth animations, and Material 3 design that automatically matches your device's light/dark mode.
 - **Data Management**: Backup/Restore functionality and CSV exports.
 
 ## Installation
