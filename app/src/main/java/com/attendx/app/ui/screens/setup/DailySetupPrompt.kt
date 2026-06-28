@@ -36,8 +36,29 @@ fun DailySetupPrompt(
 
     val context = LocalContext.current
 
+    // Determine default periods for today based on day of week
+    val cal = Calendar.getInstance()
+    var dow = cal.get(Calendar.DAY_OF_WEEK) - 2 // Monday = 0
+    if (dow < 0) dow = 6 // Sunday
+    val defaultVals = periodsPerDayString.split(",").map { it.toIntOrNull() ?: 7 }
+    val defaultPeriodsToday = defaultVals.getOrElse(dow) { 0 } // Default to 0 for Sunday (index 6)
+
     LaunchedEffect(lastPromptedDate) {
-        if (lastPromptedDate.isNotBlank() && lastPromptedDate != todayStr) {
+        if (defaultPeriodsToday == 0) {
+            // No classes today, mark as shown so we don't ask
+            if (lastPromptedDate != todayStr) {
+                viewModel.markPromptAsShown()
+                // Schedule 0 alarms to clear any old ones just in case
+                PeriodNotificationManager.scheduleDailyAlarms(
+                    context,
+                    collegeStartTimeMinutes,
+                    periodDurationMinutes,
+                    lunchBreakDurationMinutes,
+                    lunchPeriodIndex,
+                    0
+                )
+            }
+        } else if (lastPromptedDate.isNotBlank() && lastPromptedDate != todayStr) {
             showPrompt = true
         } else if (lastPromptedDate.isEmpty()) {
             // First time launching app probably
@@ -45,12 +66,6 @@ fun DailySetupPrompt(
         }
     }
 
-    // Determine default periods for today based on day of week
-    val cal = Calendar.getInstance()
-    var dow = cal.get(Calendar.DAY_OF_WEEK) - 2 // Monday = 0
-    if (dow < 0) dow = 6 // Sunday
-    val defaultVals = periodsPerDayString.split(",").map { it.toIntOrNull() ?: 7 }
-    val defaultPeriodsToday = defaultVals.getOrElse(dow) { 7 }
 
     if (showPrompt) {
         Card(
