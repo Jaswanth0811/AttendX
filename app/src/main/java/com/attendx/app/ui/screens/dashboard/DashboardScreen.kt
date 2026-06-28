@@ -26,6 +26,11 @@ import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -45,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.attendx.app.ui.components.AnimatedCircularProgress
@@ -58,6 +64,7 @@ import com.attendx.app.ui.util.toComposeColor
 import com.attendx.app.ui.screens.setup.DailySetupPrompt
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
@@ -69,16 +76,36 @@ fun DashboardScreen(
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { delay(100); visible = true }
 
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            LargeTopAppBar(
+                title = { 
+                    Text(
+                        "Good ${getGreeting()}!", 
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp
+                    ) 
+                },
+                scrollBehavior = scrollBehavior,
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        },
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onNavigateToAttendanceEntry,
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(20.dp) // iOS style fab
             ) {
                 Icon(Icons.Default.Add, "Mark Attendance")
                 Spacer(Modifier.width(8.dp))
-                Text("Mark Attendance")
+                Text("Mark", fontWeight = FontWeight.Bold)
             }
         }
     ) { padding ->
@@ -89,17 +116,13 @@ fun DashboardScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header
+            // Header subtitle
             item {
                 AnimatedVisibility(visible, enter = fadeIn() + slideInVertically()) {
-                    Column {
-                        Text("Good ${getGreeting()}! 👋",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold)
-                        Text("Here's your attendance overview",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Text("Here's your attendance overview",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp))
                 }
             }
             
@@ -209,7 +232,7 @@ fun DashboardScreen(
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.errorContainer
                         ),
-                        shape = RoundedCornerShape(16.dp)
+                        shape = RoundedCornerShape(20.dp)
                     ) {
                         Row(Modifier.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically) {
@@ -234,7 +257,7 @@ fun DashboardScreen(
                     Card(
                         onClick = onNavigateToSubjects,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.secondaryContainer)
                     ) {
@@ -251,7 +274,7 @@ fun DashboardScreen(
                     Card(
                         onClick = onNavigateToAnalytics,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.tertiaryContainer)
                     ) {
@@ -278,7 +301,7 @@ fun DashboardScreen(
                 items(state.subjectAttendance.filter { it.totalCount > 0 }) { info ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(20.dp)
                     ) {
                         Row(Modifier.padding(12.dp).fillMaxWidth(),
                             Arrangement.SpaceBetween,
@@ -338,7 +361,7 @@ private fun PeriodCard(
         ?: MaterialTheme.colorScheme.surfaceVariant
     Card(
         modifier = Modifier.width(140.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.15f))
     ) {
         Column(Modifier.padding(14.dp)) {
