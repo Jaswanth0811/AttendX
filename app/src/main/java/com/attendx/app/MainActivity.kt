@@ -24,7 +24,6 @@ import androidx.navigation.compose.rememberNavController
 import com.attendx.app.ui.components.BottomNavBar
 import com.attendx.app.ui.navigation.NavGraph
 import com.attendx.app.ui.navigation.Screen
-import com.attendx.app.ui.screens.setup.DailySetupPrompt
 import com.attendx.app.ui.theme.AttendXTheme
 import com.attendx.app.util.PeriodNotificationManager
 import dagger.hilt.android.AndroidEntryPoint
@@ -37,7 +36,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             AttendXTheme {
-                DailySetupPrompt()
                 AttendXMainScreen()
             }
         }

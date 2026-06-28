@@ -53,38 +53,61 @@ fun DailySetupPrompt(
     val defaultPeriodsToday = defaultVals.getOrElse(dow) { 7 }
 
     if (showPrompt) {
-        AlertDialog(
-            onDismissRequest = { /* forced choice */ },
-            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
-            title = { Text("Daily Timetable Check") },
-            text = { Text("Is today a Full Day following your normal timetable?") },
-            confirmButton = {
-                Button(onClick = {
-                    viewModel.markPromptAsShown()
-                    showPrompt = false
-                    
-                    // Schedule default notifications
-                    PeriodNotificationManager.scheduleDailyAlarms(
-                        context,
-                        collegeStartTimeMinutes,
-                        periodDurationMinutes,
-                        lunchBreakDurationMinutes,
-                        lunchPeriodIndex,
-                        defaultPeriodsToday
-                    )
-                }) {
-                    Text("Yes, Full Day")
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = {
-                    showPrompt = false
-                    showOverrideSheet = true
-                }) {
-                    Text("No, Customize")
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "Daily Timetable Check",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Is today a Full Day following your normal timetable?",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    OutlinedButton(onClick = {
+                        showPrompt = false
+                        showOverrideSheet = true
+                    }) {
+                        Text("No, Customize")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(onClick = {
+                        viewModel.markPromptAsShown()
+                        showPrompt = false
+                        
+                        // Schedule default notifications
+                        PeriodNotificationManager.scheduleDailyAlarms(
+                            context,
+                            collegeStartTimeMinutes,
+                            periodDurationMinutes,
+                            lunchBreakDurationMinutes,
+                            lunchPeriodIndex,
+                            defaultPeriodsToday
+                        )
+                    }) {
+                        Text("Yes, Full Day")
+                    }
                 }
             }
-        )
+        }
     }
 
     if (showOverrideSheet) {

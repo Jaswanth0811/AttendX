@@ -55,6 +55,7 @@ import com.attendx.app.ui.theme.PresentGreen
 import com.attendx.app.ui.util.DateUtils
 import com.attendx.app.ui.util.calculateSafeBunks
 import com.attendx.app.ui.util.toComposeColor
+import com.attendx.app.ui.screens.setup.DailySetupPrompt
 import kotlinx.coroutines.delay
 
 @Composable
@@ -99,6 +100,13 @@ fun DashboardScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                }
+            }
+            
+            // Daily Setup Alert
+            item {
+                AnimatedVisibility(visible, enter = fadeIn() + slideInVertically()) {
+                    DailySetupPrompt()
                 }
             }
 
