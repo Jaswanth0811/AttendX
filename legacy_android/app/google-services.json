@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1053631789111",
+    "project_id": "attendx-0811",
+    "storage_bucket": "attendx-0811.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1053631789111:android:546546958b4b9b257c27b2",
+        "android_client_info": {
+          "package_name": "com.attendx.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1053631789111-lhv8b3dnurn2u160306o4273qce13ncq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.attendx.app",
+            "certificate_hash": "4c0801c9072d3181b0ee6e2ce69821fda5e0a50c"
+          }
+        },
+        {
+          "client_id": "1053631789111-8pupmk1jmsfujpbuhp5ifdcnr81oesun.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBgWn8LgtXrQZqqGl01KVEfJ7j1PsNbYCQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1053631789111-8pupmk1jmsfujpbuhp5ifdcnr81oesun.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
