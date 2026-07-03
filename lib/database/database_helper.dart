@@ -157,6 +157,11 @@ class DatabaseHelper {
     await db.insert('timetable_slots', slot.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
   
+  Future<void> deleteTimetableSlot(int id) async {
+    final db = await database;
+    await db.delete('timetable_slots', where: 'id = ?', whereArgs: [id]);
+  }
+  
   Future<void> clearTimetable() async {
     final db = await database;
     await db.delete('timetable_slots');

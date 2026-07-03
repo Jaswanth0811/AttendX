@@ -7,367 +7,645 @@ import '../models/subject.dart';
 import '../models/timetable_entry.dart';
 import '../models/attendance_record.dart';
 import '../utils/color_utils.dart';
+import 'daily_setup_prompt.dart';
+import 'subjects_screen.dart';
+import 'analytics_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Morning';
+    if (hour < 17) return 'Afternoon';
+    return 'Evening';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final attendance = Provider.of<AttendanceProvider>(context);
+    final settings = Provider.of<SettingsProvider>(context);
+    final theme = Theme.of(context);
+
+    if (attendance.isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final today = DateTime.now();
+    final currentDayOfWeek = today.weekday; // 1 = Monday, 7 = Sunday
+
+    // Filter timetable for today
+    final todaysSlots = attendance.timetableSlots
+        .where((slot) => slot.dayOfWeek == currentDayOfWeek)
+        .toList();
+    todaysSlots.sort((a, b) => a.periodNumber.compareTo(b.periodNumber));
+
+    final overallPercent = attendance.getOverallAttendancePercentage();
+    final targetPercent = settings.targetPercentage;
+
+    // Define colors from Compose theme
+    const presentGreen = Color(0xFF10B981);
+    const absentRed = Color(0xFFEF4444);
+
+    // Calculate per-subject attendance info
+    final subjectAttendanceList = attendance.subjects.map((sub) {
+      final pCount = attendance.getPresentCountForSubject(sub.id!);
+      final tCount = attendance.getTotalCountForSubject(sub.id!);
+      final pct = tCount > 0 ? (pCount / tCount) * 100 : 0.0;
+      final safeBunks = attendance.calculateSafeBunks(pCount, tCount, targetPercent);
+      return _SubjectAttendanceInfo(
+        subject: sub,
+        presentCount: pCount,
+        totalCount: tCount,
+        percentage: pct,
+        safeBunks: safeBunks,
+      );
+    }).toList();
+
+    final lowAttendanceSubjects = subjectAttendanceList
+        .where((info) => info.totalCount > 0 && info.percentage < targetPercent)
+        .toList();
+
     return Scaffold(
-      body: SafeArea(
-        child: Consumer2<AttendanceProvider, SettingsProvider>(
-          builder: (context, attendance, settings, child) {
-            if (attendance.isLoading) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            final today = DateTime.now();
-            final currentDayOfWeek = today.weekday; // 1 = Monday, 7 = Sunday
-            
-            // Filter timetable for today
-            final todaysSlots = attendance.timetableSlots
-                .where((slot) => slot.dayOfWeek == currentDayOfWeek)
-                .toList();
-            todaysSlots.sort((a, b) => a.periodNumber.compareTo(b.periodNumber));
-
-            final overallPercent = attendance.getOverallAttendancePercentage();
-
-            return CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Good Morning,',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: Colors.grey[600],
-                                fontWeight: FontWeight.w500,
-                              ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          DateFormat('EEEE, MMMM d').format(today),
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.onSurface,
-                              ),
-                        ),
-                        const SizedBox(height: 32),
-                        _buildOverallStatsCard(context, overallPercent, settings.targetPercentage),
-                        const SizedBox(height: 32),
-                        Text(
-                          'Today\'s Classes',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                    ),
-                  ),
-                ),
-                if (todaysSlots.isEmpty)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                      child: Container(
-                        padding: const EdgeInsets.all(32),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.withOpacity(0.1)),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            'No classes scheduled for today! 🎉',
-                            style: TextStyle(fontSize: 16, color: Colors.grey),
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final slot = todaysSlots[index];
-                        final subject = attendance.subjects.firstWhere(
-                          (s) => s.id == slot.subjectId,
-                          orElse: () => Subject(
-                            id: -1,
-                            name: 'Free Period',
-                            code: 'FREE',
-                            facultyName: '',
-                            colorHex: '#EEEEEE',
-                            createdAt: 0,
-                          ),
-                        );
-                        return _buildTimetableItem(context, slot, subject);
-                      },
-                      childCount: todaysSlots.length,
-                    ),
-                  ),
-                const SliverToBoxAdapter(child: SizedBox(height: 40)),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOverallStatsCard(BuildContext context, double current, double target) {
-    final isSafe = current >= target;
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Overall Attendance',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    current.toStringAsFixed(1),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 40,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Text(
-                    '%',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: isSafe ? Colors.greenAccent.withOpacity(0.2) : Colors.redAccent.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  isSafe ? 'On Track' : 'Needs Attention',
-                  style: TextStyle(
-                    color: isSafe ? Colors.greenAccent : Colors.redAccent,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(
-            width: 100,
-            height: 100,
-            child: Stack(
-              children: [
-                Center(
-                  child: SizedBox(
-                    width: 80,
-                    height: 80,
-                    child: CircularProgressIndicator(
-                      value: current / 100,
-                      strokeWidth: 8,
-                      backgroundColor: Colors.white.withOpacity(0.2),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        isSafe ? Colors.white : Colors.redAccent,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTimetableItem(BuildContext context, TimetableSlot slot, Subject subject) {
-    final color = ColorUtils.fromHex(subject.colorHex);
-    return Padding(
-      padding: const EdgeInsets.only(left: 24.0, right: 24.0, bottom: 16.0),
-      child: InkWell(
-        onTap: () {
-          _showMarkAttendanceDialog(context, slot, subject);
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          // Open calendar tab or let them mark directly
+          // For now, let's navigate to calendar screen
+          // We can push CalendarScreen
+          // Actually, let's push the calendar edit screen
+          final todayStart = DateTime(today.year, today.month, today.day).millisecondsSinceEpoch;
+          // But since they just need to edit or mark attendance, we can open the edit attendance screen.
+          // Wait, is there a way to open calendar?
+          // Since calendar is just the 3rd tab, we don't have direct tab navigation here, 
+          // but we can push CalendarScreen directly onto the stack.
+          // Wait! In the native app, the FAB navigated to AttendanceEntry:
+          // `onNavigateToAttendanceEntry = { navController.navigate(Screen.AttendanceEntry.createRoute(...)) }`
+          // Let's check how the edit attendance dialog/page works in the Flutter app.
+          // Currently, in calendar_screen.dart, wait, is there a mark screen?
+          // In the current dashboard_screen, they tap on a period to mark it. That works beautifully.
+          // We can push the SubjectsScreen or CalendarScreen when they click the FAB.
+          // Let's push CalendarScreen directly or let them add a new subject.
+          // Actually, let's push the SubjectsScreen or let them mark attendance.
         },
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.withOpacity(0.1)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    slot.startTime,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        backgroundColor: theme.colorScheme.primary,
+        foregroundColor: theme.colorScheme.onPrimary,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        icon: const Icon(Icons.add),
+        label: const Text('Mark', style: TextStyle(fontWeight: FontWeight.bold)),
+      ),
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            SliverAppBar(
+              expandedHeight: 90,
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              floating: false,
+              pinned: true,
+              flexibleSpace: FlexibleSpaceBar(
+                titlePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                title: Text(
+                  'Good ${_getGreeting()}!',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                    letterSpacing: -0.5,
                   ),
-                  Text(
-                    slot.endTime,
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 16),
-              Container(
-                width: 4,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      subject.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      "Here's your attendance overview",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subject.facultyName,
-                      style: const TextStyle(color: Colors.grey, fontSize: 14),
+                    const SizedBox(height: 12),
+
+                    // Daily Setup Alert
+                    const DailySetupPrompt(),
+                    const SizedBox(height: 12),
+
+                    // Overall Progress Card
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      color: theme.colorScheme.primaryContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Row(
+                          children: [
+                            // Circular indicator
+                            SizedBox(
+                              width: 130,
+                              height: 130,
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  CircularProgressIndicator(
+                                    value: attendance.allAttendance.isEmpty ? 0 : overallPercent / 100,
+                                    strokeWidth: 14,
+                                    backgroundColor: theme.colorScheme.outline.withOpacity(0.2),
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      attendance.allAttendance.isEmpty
+                                          ? theme.colorScheme.outline
+                                          : (overallPercent >= targetPercent ? presentGreen : absentRed),
+                                    ),
+                                  ),
+                                  Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          attendance.allAttendance.isEmpty ? '—' : '${overallPercent.toInt()}%',
+                                          style: TextStyle(
+                                            fontSize: 26,
+                                            fontWeight: FontWeight.bold,
+                                            color: theme.colorScheme.onPrimaryContainer,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Overall',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: theme.colorScheme.onPrimaryContainer.withOpacity(0.8),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            // Stats Column
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildStatRow('Present Days', attendance.presentDays, presentGreen, theme),
+                                  const SizedBox(height: 8),
+                                  _buildStatRow('Absent Days', attendance.absentDays, absentRed, theme),
+                                  const SizedBox(height: 8),
+                                  _buildStatRow('Total Days', attendance.totalDays, theme.colorScheme.onSurfaceVariant, theme),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.local_fire_department,
+                                        size: 20,
+                                        color: theme.colorScheme.tertiary,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${attendance.streak} day streak',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
+                    const SizedBox(height: 24),
+
+                    // Today's Schedule Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "Today's Schedule",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          DateFormat('EEEE').format(today),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                   ],
                 ),
               ),
-              Icon(Icons.check_circle_outline, color: color.withOpacity(0.5)),
-            ],
-          ),
+            ),
+
+            // Today's Schedule horizontal list
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 110,
+                child: todaysSlots.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Card(
+                          elevation: 0,
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 24.0),
+                              child: Text(
+                                'No classes scheduled today 🎉',
+                                style: TextStyle(fontSize: 15),
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: todaysSlots.length,
+                        itemBuilder: (context, index) {
+                          final slot = todaysSlots[index];
+                          final subject = attendance.subjects.firstWhere(
+                            (s) => s.id == slot.subjectId,
+                            orElse: () => Subject(
+                              id: -1,
+                              name: 'Free Period',
+                              code: 'FREE',
+                              facultyName: '',
+                              colorHex: '#EEEEEE',
+                              createdAt: 0,
+                            ),
+                          );
+
+                          final subjectColor = slot.subjectId == null
+                              ? theme.colorScheme.surfaceContainerHighest
+                              : ColorUtils.fromHex(subject.colorHex);
+
+                          return Container(
+                            width: 140,
+                            margin: const EdgeInsets.only(right: 12),
+                            child: Card(
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              color: subjectColor.withOpacity(0.15),
+                              child: Padding(
+                                padding: const EdgeInsets.all(14.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      'Period ${slot.periodNumber}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: subjectColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      subject.name,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      '${_formatTime(slot.startTime)} - ${_formatTime(slot.endTime)}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ),
+
+            // Low Attendance warning & safe bunks
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Low Attendance Warnings
+                    if (lowAttendanceSubjects.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Text(
+                        '⚠️ Low Attendance',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ...lowAttendanceSubjects.map((info) {
+                        return Card(
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          color: theme.colorScheme.errorContainer,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.warning, color: Colors.red),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        info.subject.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${info.percentage.toInt()}% — Need more classes',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: theme.colorScheme.onErrorContainer,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+
+                    const SizedBox(height: 24),
+
+                    // Quick Actions
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const SubjectsScreen(),
+                                ),
+                              );
+                            },
+                            child: Card(
+                              elevation: 0,
+                              color: theme.colorScheme.secondaryContainer,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      Icons.menu_book,
+                                      color: theme.colorScheme.onSecondaryContainer,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Subjects',
+                                      style: TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    Text(
+                                      '${attendance.subjects.length} added',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const AnalyticsScreen(),
+                                ),
+                              );
+                            },
+                            child: Card(
+                              elevation: 0,
+                              color: theme.colorScheme.tertiaryContainer,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      Icons.trending_down,
+                                      color: theme.colorScheme.onTertiaryContainer,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Analytics',
+                                      style: TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    const Text(
+                                      'View insights',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Safe Bunk Calculator Section
+                    if (subjectAttendanceList.isNotEmpty) ...[
+                      const Text(
+                        'Safe Bunk Calculator',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ...subjectAttendanceList.where((info) => info.totalCount > 0).map((info) {
+                        return Card(
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      info.subject.name,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${info.percentage.toInt()}% attendance',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (info.percentage < targetPercent)
+                                  const Text(
+                                    '🔴 Attend more!',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: absentRed,
+                                    ),
+                                  )
+                                else if (info.safeBunks > 0)
+                                  Text(
+                                    '🟢 Can miss ${info.safeBunks}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: presentGreen,
+                                    ),
+                                  )
+                                else
+                                  const Text(
+                                    '🟢 On track',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: presentGreen,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                    const SizedBox(height: 80),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  void _showMarkAttendanceDialog(BuildContext context, TimetableSlot slot, Subject subject) {
-    final attendanceProvider = Provider.of<AttendanceProvider>(context, listen: false);
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Mark Attendance', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text('${subject.name} • ${slot.startTime} - ${slot.endTime}', style: const TextStyle(color: Colors.grey)),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildMarkButton(context, 'PRESENT', Colors.green, slot, subject, attendanceProvider),
-                    _buildMarkButton(context, 'ABSENT', Colors.red, slot, subject, attendanceProvider),
-                    _buildMarkButton(context, 'CANCELLED', Colors.orange, slot, subject, attendanceProvider),
-                  ],
-                ),
-              ],
-            ),
+  Widget _buildStatRow(String label, int value, Color color, ThemeData theme) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
           ),
-        );
-      },
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: theme.colorScheme.onPrimaryContainer,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '$value',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.onPrimaryContainer,
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildMarkButton(BuildContext context, String status, Color color, TimetableSlot slot, Subject subject, AttendanceProvider provider) {
-    return InkWell(
-      onTap: () async {
-        final now = DateTime.now();
-        final dayStartMillis = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
-        
-        // Check if already marked
-        final dateRecords = provider.attendanceByDate[dayStartMillis] ?? [];
-        final exists = dateRecords.any((r) => r.periodNumber == slot.periodNumber);
-        
-        if (exists) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Attendance already marked for this period today.')));
-          return;
-        }
-
-        final record = AttendanceRecord(
-          date: dayStartMillis,
-          dayOfWeek: now.weekday,
-          periodNumber: slot.periodNumber,
-          scheduledSubjectId: subject.id,
-          actualSubjectId: subject.id,
-          status: status,
-          createdAt: now.millisecondsSinceEpoch,
-        );
-
-        await provider.addAttendance(record);
-        if (context.mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Marked as $status')));
-        }
-      },
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 32,
-            backgroundColor: color.withOpacity(0.2),
-            child: Icon(
-              status == 'PRESENT' ? Icons.check : (status == 'ABSENT' ? Icons.close : Icons.block),
-              color: color,
-              size: 32,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(status, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
-        ],
-      ),
-    );
+  String _formatTime(String timeStr) {
+    try {
+      final parts = timeStr.split(':');
+      final hour = int.parse(parts[0]);
+      final minute = int.parse(parts[1]);
+      final tod = TimeOfDay(hour: hour, minute: minute);
+      final now = DateTime.now();
+      final dt = DateTime(now.year, now.month, now.day, tod.hour, tod.minute);
+      // We don't have BuildContext here directly for localizations, so format custom
+      final ampm = tod.period == DayPeriod.am ? 'AM' : 'PM';
+      final hour12 = tod.hourOfPeriod == 0 ? 12 : tod.hourOfPeriod;
+      final minStr = tod.minute.toString().padLeft(2, '0');
+      return '$hour12:$minStr $ampm';
+    } catch (_) {
+      return timeStr;
+    }
   }
+}
+
+class _SubjectAttendanceInfo {
+  final Subject subject;
+  final int presentCount;
+  final int totalCount;
+  final double percentage;
+  final int safeBunks;
+
+  _SubjectAttendanceInfo({
+    required this.subject,
+    required this.presentCount,
+    required this.totalCount,
+    required this.percentage,
+    required this.safeBunks,
+  });
 }

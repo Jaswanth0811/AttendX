@@ -84,6 +84,11 @@ class AttendanceProvider with ChangeNotifier {
     await loadData();
   }
 
+  Future<void> deleteTimetableSlot(int id) async {
+    await _db.deleteTimetableSlot(id);
+    await loadData();
+  }
+
   Future<void> clearTimetable() async {
     await _db.clearTimetable();
     await loadData();
@@ -108,6 +113,88 @@ class AttendanceProvider with ChangeNotifier {
   // --- Stats Calculation ---
   double _overallPercentage = 0.0;
   double getOverallAttendancePercentage() => _overallPercentage;
+
+  int get totalDays => _attendanceByDate.keys.length;
+
+  int get presentDays {
+    return _attendanceByDate.entries
+        .where((e) => e.value.any((r) => r.status == 'PRESENT'))
+        .length;
+  }
+
+  int get absentDays {
+    return _attendanceByDate.entries
+        .where((e) => e.value.any((r) => r.status == 'ABSENT'))
+        .length;
+  }
+
+  int get streak {
+    // Collect all dates with at least one PRESENT record
+    final presentDates = _attendanceByDate.entries
+        .where((e) => e.value.any((r) => r.status == 'PRESENT'))
+        .map((e) => e.key)
+        .toList();
+
+    if (presentDates.isEmpty) return 0;
+
+    // Sort ascending
+    presentDates.sort();
+
+    final today = _getTodayStartMillis();
+    int currentStreak = 0;
+    int currentDate = today;
+
+    // Iterate backwards
+    for (var date in presentDates.reversed) {
+      // Normalize date to start of day
+      final normalizedDate = _normalizeToStartOfDay(date);
+
+      if (normalizedDate == currentDate || normalizedDate == currentDate - 86400000) {
+        currentStreak++;
+        currentDate = normalizedDate - 86400000;
+      } else if (normalizedDate < currentDate) {
+        break;
+      }
+    }
+    return currentStreak;
+  }
+
+  int getPresentCountForSubject(int subjectId) {
+    return _allAttendance.where((r) => r.actualSubjectId == subjectId && r.status == 'PRESENT').length;
+  }
+
+  int getTotalCountForSubject(int subjectId) {
+    return _allAttendance.where((r) => r.actualSubjectId == subjectId && (r.status == 'PRESENT' || r.status == 'ABSENT')).length;
+  }
+
+  int _getTodayStartMillis() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+  }
+
+  int _normalizeToStartOfDay(int millis) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(millis);
+    return DateTime(dt.year, dt.month, dt.day).millisecondsSinceEpoch;
+  }
+
+  int calculateSafeBunks(int attended, int total, double targetPercent) {
+    if (total == 0) return 0;
+    double currentPercent = (attended / total) * 100;
+    if (currentPercent > targetPercent) {
+      return ((attended - (targetPercent / 100) * total) / (targetPercent / 100)).toInt();
+    }
+    return 0;
+  }
+
+  int calculateClassesNeeded(int attended, int total, double targetPercent) {
+    if (total == 0) return 0;
+    double currentPercent = (attended / total) * 100;
+    if (currentPercent < targetPercent) {
+      double needed = ((targetPercent / 100 * total - attended) / (1.0 - targetPercent / 100));
+      return needed.ceil();
+    }
+    return 0;
+  }
 
   void _calculateOverallPercentage() {
     if (_allAttendance.isEmpty) {

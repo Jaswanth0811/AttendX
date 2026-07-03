@@ -11,6 +11,7 @@ class SettingsProvider with ChangeNotifier {
   int _lunchPeriodIndex = 3;
   String _periodsPerDayString = "1:6,2:6,3:6,4:6,5:6,6:6";
   double _targetPercentage = 75.0;
+  String _lastPromptedDate = "";
 
   bool _isLoaded = false;
 
@@ -26,6 +27,7 @@ class SettingsProvider with ChangeNotifier {
   int get lunchPeriodIndex => _lunchPeriodIndex;
   String get periodsPerDayString => _periodsPerDayString;
   double get targetPercentage => _targetPercentage;
+  String get lastPromptedDate => _lastPromptedDate;
 
   Future<void> _loadSettings() async {
     _prefs = await SharedPreferences.getInstance();
@@ -36,6 +38,7 @@ class SettingsProvider with ChangeNotifier {
     _lunchPeriodIndex = _prefs?.getInt('lunch_period_index') ?? 3;
     _periodsPerDayString = _prefs?.getString('periods_per_day_string') ?? "1:6,2:6,3:6,4:6,5:6,6:6";
     _targetPercentage = _prefs?.getDouble('target_percentage') ?? 75.0;
+    _lastPromptedDate = _prefs?.getString('last_prompt_date') ?? "";
     _isLoaded = true;
     notifyListeners();
   }
@@ -70,6 +73,12 @@ class SettingsProvider with ChangeNotifier {
   Future<void> setTargetPercentage(double val) async {
     _targetPercentage = val;
     await _prefs?.setDouble('target_percentage', val);
+    notifyListeners();
+  }
+
+  Future<void> setLastPromptedDate(String val) async {
+    _lastPromptedDate = val;
+    await _prefs?.setString('last_prompt_date', val);
     notifyListeners();
   }
 }

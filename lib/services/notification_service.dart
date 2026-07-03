@@ -98,4 +98,55 @@ class NotificationService {
       }
     }
   }
+
+  Future<void> scheduleDailyPeriodEndReminders({
+    required int startTimeMins,
+    required int periodDurationMins,
+    required int lunchDurationMins,
+    required int lunchPeriodIdx,
+    required int totalPeriodsToday,
+  }) async {
+    final now = DateTime.now();
+    var currentMins = startTimeMins;
+
+    for (int i = 1; i <= totalPeriodsToday; i++) {
+      if (i == lunchPeriodIdx) {
+        currentMins += lunchDurationMins;
+      } else {
+        currentMins += periodDurationMins;
+
+        final scheduledTime = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          currentMins ~/ 60,
+          currentMins % 60,
+        );
+
+        if (scheduledTime.isBefore(now)) continue;
+
+        // Cancel previous one with same ID first
+        try {
+          await _notificationsPlugin.cancel(id: 1000 + i);
+        } catch (_) {}
+
+        await _notificationsPlugin.zonedSchedule(
+          id: 1000 + i,
+          title: 'Period $i Ended',
+          body: 'Your period $i has just ended. Tap to mark attendance.',
+          scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
+          notificationDetails: const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'period_end_channel',
+              'Period End Reminders',
+              channelDescription: 'Notifications to mark attendance when class ends',
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+          ),
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        );
+      }
+    }
+  }
 }
