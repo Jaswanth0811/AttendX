@@ -6,6 +6,8 @@ import '../models/attendance_record.dart';
 import '../database/database_helper.dart';
 import '../services/notification_service.dart';
 
+import '../providers/settings_provider.dart';
+
 class AttendanceProvider with ChangeNotifier {
   final DatabaseHelper _db = DatabaseHelper();
   
@@ -14,6 +16,7 @@ class AttendanceProvider with ChangeNotifier {
   List<TimetableSlot> _timetableSlots = [];
   List<AttendanceRecord> _allAttendance = [];
   Map<int, List<AttendanceRecord>> _attendanceByDate = {};
+  List<int> _excludedSubjectIds = [];
   
   bool _isLoading = true;
   
@@ -22,7 +25,14 @@ class AttendanceProvider with ChangeNotifier {
   List<TimetableSlot> get timetableSlots => _timetableSlots;
   List<AttendanceRecord> get allAttendance => _allAttendance;
   Map<int, List<AttendanceRecord>> get attendanceByDate => _attendanceByDate;
+  List<int> get excludedSubjectIds => _excludedSubjectIds;
   bool get isLoading => _isLoading;
+
+  void updateSettings(SettingsProvider settings) {
+    _excludedSubjectIds = settings.excludedSubjectIds;
+    _calculateOverallPercentage();
+    notifyListeners();
+  }
 
   AttendanceProvider() {
     loadData();
@@ -114,25 +124,42 @@ class AttendanceProvider with ChangeNotifier {
   double _overallPercentage = 0.0;
   double getOverallAttendancePercentage() => _overallPercentage;
 
-  int get totalDays => _attendanceByDate.keys.length;
+  int get totalDays {
+    return _attendanceByDate.entries
+        .where((e) => e.value.any((r) {
+          final subjectId = r.actualSubjectId ?? r.scheduledSubjectId;
+          return !_excludedSubjectIds.contains(subjectId) && (r.status == 'PRESENT' || r.status == 'ABSENT');
+        }))
+        .length;
+  }
 
   int get presentDays {
     return _attendanceByDate.entries
-        .where((e) => e.value.any((r) => r.status == 'PRESENT'))
+        .where((e) => e.value.any((r) {
+          final subjectId = r.actualSubjectId ?? r.scheduledSubjectId;
+          return !_excludedSubjectIds.contains(subjectId) && r.status == 'PRESENT';
+        }))
         .length;
   }
 
   int get absentDays {
     return _attendanceByDate.entries
-        .where((e) => e.value.any((r) => r.status == 'ABSENT'))
+        .where((e) => e.value.any((r) {
+          final subjectId = r.actualSubjectId ?? r.scheduledSubjectId;
+          return !_excludedSubjectIds.contains(subjectId) && r.status == 'ABSENT';
+        }))
         .length;
   }
 
   int get streak {
-    // Collect all dates with at least one PRESENT record
+    // Collect all dates with at least one PRESENT record of included subjects
     final presentDates = _attendanceByDate.entries
-        .where((e) => e.value.any((r) => r.status == 'PRESENT'))
-        .map((e) => e.key)
+        .where((e) => e.value.any((r) {
+          final subjectId = r.actualSubjectId ?? r.scheduledSubjectId;
+          return !_excludedSubjectIds.contains(subjectId) && r.status == 'PRESENT';
+        }))
+        .map((e) => _normalizeToStartOfDay(e.key))
+        .toSet()
         .toList();
 
     if (presentDates.isEmpty) return 0;
@@ -146,13 +173,10 @@ class AttendanceProvider with ChangeNotifier {
 
     // Iterate backwards
     for (var date in presentDates.reversed) {
-      // Normalize date to start of day
-      final normalizedDate = _normalizeToStartOfDay(date);
-
-      if (normalizedDate == currentDate || normalizedDate == currentDate - 86400000) {
+      if (date == currentDate || date == currentDate - 86400000) {
         currentStreak++;
-        currentDate = normalizedDate - 86400000;
-      } else if (normalizedDate < currentDate) {
+        currentDate = date - 86400000;
+      } else if (date < currentDate) {
         break;
       }
     }
@@ -204,6 +228,10 @@ class AttendanceProvider with ChangeNotifier {
     int present = 0;
     int totalClasses = 0;
     for (var record in _allAttendance) {
+      final subjectId = record.actualSubjectId ?? record.scheduledSubjectId;
+      if (_excludedSubjectIds.contains(subjectId)) {
+        continue;
+      }
       if (record.status == 'PRESENT' || record.status == 'SEMINAR') {
         present++;
         totalClasses++;

@@ -12,6 +12,10 @@ class SettingsProvider with ChangeNotifier {
   String _periodsPerDayString = "1:6,2:6,3:6,4:6,5:6,6:6";
   double _targetPercentage = 75.0;
   String _lastPromptedDate = "";
+  
+  List<int> _excludedSubjectIds = [];
+  DateTime? _semesterStartDate;
+  DateTime? _semesterEndDate;
 
   bool _isLoaded = false;
 
@@ -28,6 +32,10 @@ class SettingsProvider with ChangeNotifier {
   String get periodsPerDayString => _periodsPerDayString;
   double get targetPercentage => _targetPercentage;
   String get lastPromptedDate => _lastPromptedDate;
+  
+  List<int> get excludedSubjectIds => _excludedSubjectIds;
+  DateTime get semesterStartDate => _semesterStartDate ?? DateTime.now().subtract(const Duration(days: 90));
+  DateTime get semesterEndDate => _semesterEndDate ?? DateTime.now().add(const Duration(days: 90));
 
   Future<void> _loadSettings() async {
     _prefs = await SharedPreferences.getInstance();
@@ -39,6 +47,16 @@ class SettingsProvider with ChangeNotifier {
     _periodsPerDayString = _prefs?.getString('periods_per_day_string') ?? "1:6,2:6,3:6,4:6,5:6,6:6";
     _targetPercentage = _prefs?.getDouble('target_percentage') ?? 75.0;
     _lastPromptedDate = _prefs?.getString('last_prompt_date') ?? "";
+    
+    final excludedIdsStr = _prefs?.getStringList('excluded_subject_ids') ?? [];
+    _excludedSubjectIds = excludedIdsStr.map((x) => int.tryParse(x) ?? -1).where((x) => x != -1).toList();
+
+    final semStartMillis = _prefs?.getInt('semester_start_date');
+    _semesterStartDate = semStartMillis != null ? DateTime.fromMillisecondsSinceEpoch(semStartMillis) : DateTime.now().subtract(const Duration(days: 90));
+
+    final semEndMillis = _prefs?.getInt('semester_end_date');
+    _semesterEndDate = semEndMillis != null ? DateTime.fromMillisecondsSinceEpoch(semEndMillis) : DateTime.now().add(const Duration(days: 90));
+
     _isLoaded = true;
     notifyListeners();
   }
@@ -79,6 +97,26 @@ class SettingsProvider with ChangeNotifier {
   Future<void> setLastPromptedDate(String val) async {
     _lastPromptedDate = val;
     await _prefs?.setString('last_prompt_date', val);
+    notifyListeners();
+  }
+
+  Future<void> toggleSubjectCalculation(int subjectId, bool calculate) async {
+    if (calculate) {
+      _excludedSubjectIds.remove(subjectId);
+    } else {
+      if (!_excludedSubjectIds.contains(subjectId)) {
+        _excludedSubjectIds.add(subjectId);
+      }
+    }
+    await _prefs?.setStringList('excluded_subject_ids', _excludedSubjectIds.map((x) => x.toString()).toList());
+    notifyListeners();
+  }
+
+  Future<void> updateSemesterDates(DateTime start, DateTime end) async {
+    _semesterStartDate = start;
+    _semesterEndDate = end;
+    await _prefs?.setInt('semester_start_date', start.millisecondsSinceEpoch);
+    await _prefs?.setInt('semester_end_date', end.millisecondsSinceEpoch);
     notifyListeners();
   }
 }

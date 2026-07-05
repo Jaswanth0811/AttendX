@@ -17,7 +17,10 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
-        ChangeNotifierProvider(create: (_) => AttendanceProvider()),
+        ChangeNotifierProxyProvider<SettingsProvider, AttendanceProvider>(
+          create: (_) => AttendanceProvider(),
+          update: (_, settings, attendance) => attendance!..updateSettings(settings),
+        ),
       ],
       child: const AttendXApp(),
     ),

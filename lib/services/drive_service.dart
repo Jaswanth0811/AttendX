@@ -20,7 +20,7 @@ class GoogleAuthClient extends http.BaseClient {
 }
 
 class DriveService {
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
+  static final GoogleSignIn googleSignIn = GoogleSignIn(
     serverClientId: '1053631789111-8pupmk1jmsfujpbuhp5ifdcnr81oesun.apps.googleusercontent.com',
     scopes: [
       drive.DriveApi.driveAppdataScope,
@@ -29,7 +29,7 @@ class DriveService {
   );
 
   Future<drive.DriveApi?> _getDriveApi() async {
-    final account = await _googleSignIn.signIn();
+    final account = await googleSignIn.signIn();
     if (account == null) return null;
 
     final headers = await account.authHeaders;

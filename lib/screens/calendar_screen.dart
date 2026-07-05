@@ -7,6 +7,7 @@ import '../models/subject.dart';
 import '../models/timetable_entry.dart';
 import '../utils/color_utils.dart';
 import 'package:intl/intl.dart';
+import '../widgets/attendance_wizard_sheet.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -31,8 +32,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
       appBar: AppBar(title: const Text('Calendar')),
       body: Consumer<AttendanceProvider>(
         builder: (context, attendance, child) {
-          final allRecords = attendance.allAttendance;
-
           return Column(
             children: [
               TableCalendar(
@@ -124,165 +123,117 @@ class _CalendarScreenState extends State<CalendarScreen> {
     
     displayItems.sort((a, b) => (a['periodNumber'] as int).compareTo(b['periodNumber'] as int));
     
-    if (displayItems.isEmpty) {
-      return Center(
-        child: Text(
-          'No classes scheduled or attendance marked for ${DateFormat('MMM d, yyyy').format(_selectedDay!)}',
-          style: const TextStyle(color: Colors.grey),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
+    return Column(
+      children: [
+        Expanded(
+          child: displayItems.isEmpty
+              ? Center(
+                  child: Text(
+                    'No classes scheduled or attendance marked for ${DateFormat('MMM d, yyyy').format(_selectedDay!)}',
+                    style: const TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: displayItems.length,
+                  padding: const EdgeInsets.all(16),
+                  itemBuilder: (context, index) {
+                    final item = displayItems[index];
+                    final subject = item['subject'] as Subject;
+                    final record = item['record'] as AttendanceRecord?;
+                    final slot = item['slot'] as TimetableSlot?;
+                    
+                    final status = record?.status ?? 'NOT MARKED';
+                    final startTime = item['startTime'] as String;
+                    final endTime = item['endTime'] as String;
+                    
+                    Color statusColor;
+                    switch (status) {
+                      case 'PRESENT':
+                      case 'SEMINAR':
+                        statusColor = Colors.green;
+                        break;
+                      case 'ABSENT':
+                        statusColor = Colors.red;
+                        break;
+                      case 'CANCELLED':
+                      case 'FREE':
+                      case 'HOLIDAY':
+                        statusColor = Colors.grey;
+                        break;
+                      default:
+                        statusColor = Colors.orange;
+                        break;
+                    }
 
-    return ListView.builder(
-      itemCount: displayItems.length,
-      padding: const EdgeInsets.all(16),
-      itemBuilder: (context, index) {
-        final item = displayItems[index];
-        final subject = item['subject'] as Subject;
-        final record = item['record'] as AttendanceRecord?;
-        final slot = item['slot'] as TimetableSlot?;
-        
-        final status = record?.status ?? 'NOT MARKED';
-        final startTime = item['startTime'] as String;
-        final endTime = item['endTime'] as String;
-        
-        Color statusColor;
-        switch (status) {
-          case 'PRESENT':
-          case 'SEMINAR':
-            statusColor = Colors.green;
-            break;
-          case 'ABSENT':
-            statusColor = Colors.red;
-            break;
-          case 'CANCELLED':
-          case 'FREE':
-          case 'HOLIDAY':
-            statusColor = Colors.grey;
-            break;
-          default:
-            statusColor = Colors.orange;
-            break;
-        }
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: ColorUtils.fromHex(subject.colorHex),
-              child: Text('${item['periodNumber']}', style: const TextStyle(color: Colors.white)),
-            ),
-            title: Text(subject.name),
-            subtitle: Text('$status • $startTime${endTime.isNotEmpty ? ' - $endTime' : ''}'),
-            trailing: Icon(
-              status == 'PRESENT' ? Icons.check_circle : (status == 'ABSENT' ? Icons.cancel : (status == 'NOT MARKED' ? Icons.help_outline : Icons.info)),
-              color: statusColor,
-            ),
-            onTap: () {
-              if (slot != null) {
-                _showEditAttendanceDialog(context, slot, subject, record, attendance, dayStartMillis, dayOfWeek);
-              } else {
-                // If there's no slot, we can't easily recreate a dummy slot. 
-                // Let's create a temporary slot to pass to the dialog for editing an extra class.
-                final tempSlot = TimetableSlot(
-                  id: -1, 
-                  dayOfWeek: dayOfWeek, 
-                  subjectId: subject.id ?? -1, 
-                  startTime: startTime, 
-                  endTime: endTime, 
-                  periodNumber: item['periodNumber'] as int
-                );
-                _showEditAttendanceDialog(context, tempSlot, subject, record, attendance, dayStartMillis, dayOfWeek);
-              }
-            },
-          ),
-        );
-      },
-    );
-  }
-
-  void _showEditAttendanceDialog(BuildContext context, TimetableSlot slot, Subject subject, AttendanceRecord? record, AttendanceProvider provider, int dateMillis, int dayOfWeek) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(record == null ? 'Mark Attendance' : 'Edit Attendance', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text('${subject.name} • ${slot.startTime} - ${slot.endTime}', style: const TextStyle(color: Colors.grey)),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildMarkButton(context, 'PRESENT', Colors.green, slot, subject, provider, record, dateMillis, dayOfWeek),
-                    _buildMarkButton(context, 'ABSENT', Colors.red, slot, subject, provider, record, dateMillis, dayOfWeek),
-                    _buildMarkButton(context, 'CANCELLED', Colors.orange, slot, subject, provider, record, dateMillis, dayOfWeek),
-                  ],
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: ColorUtils.fromHex(subject.colorHex),
+                          child: Text('${item['periodNumber']}', style: const TextStyle(color: Colors.white)),
+                        ),
+                        title: Text(subject.name),
+                        subtitle: Text('$status • $startTime${endTime.isNotEmpty ? ' - $endTime' : ''}'),
+                        trailing: Icon(
+                          status == 'PRESENT' ? Icons.check_circle : (status == 'ABSENT' ? Icons.cancel : (status == 'NOT MARKED' ? Icons.help_outline : Icons.info)),
+                          color: statusColor,
+                        ),
+                        onTap: () {
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                            ),
+                            builder: (context) {
+                              return AttendanceWizardSheet(
+                                slot: slot,
+                                subject: subject.id == -1 ? null : subject,
+                                record: record,
+                                dateMillis: dayStartMillis,
+                                dayOfWeek: dayOfWeek,
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    );
+                  },
                 ),
-              ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+          child: SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
+                  builder: (context) {
+                    return AttendanceWizardSheet(
+                      dateMillis: dayStartMillis,
+                      dayOfWeek: dayOfWeek,
+                    );
+                  },
+                );
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add / Edit Extra Attendance', style: TextStyle(fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
             ),
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildMarkButton(BuildContext context, String status, Color color, TimetableSlot slot, Subject subject, AttendanceProvider provider, AttendanceRecord? record, int dateMillis, int dayOfWeek) {
-    return InkWell(
-      onTap: () async {
-        if (record != null) {
-          final updated = AttendanceRecord(
-            id: record.id,
-            date: record.date,
-            dayOfWeek: record.dayOfWeek,
-            periodNumber: record.periodNumber,
-            scheduledSubjectId: record.scheduledSubjectId,
-            actualSubjectId: record.actualSubjectId,
-            status: status,
-            createdAt: record.createdAt,
-            note: record.note,
-          );
-          await provider.updateAttendance(updated);
-        } else {
-          final newRecord = AttendanceRecord(
-            date: dateMillis,
-            dayOfWeek: dayOfWeek,
-            periodNumber: slot.periodNumber,
-            scheduledSubjectId: subject.id,
-            actualSubjectId: subject.id,
-            status: status,
-            createdAt: DateTime.now().millisecondsSinceEpoch,
-          );
-          await provider.addAttendance(newRecord);
-        }
-        
-        if (context.mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Marked as $status')));
-        }
-      },
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 32,
-            backgroundColor: color.withOpacity(0.2),
-            child: Icon(
-              status == 'PRESENT' ? Icons.check : (status == 'ABSENT' ? Icons.close : Icons.block),
-              color: color,
-              size: 32,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(status, style: TextStyle(fontWeight: FontWeight.bold, color: color)),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

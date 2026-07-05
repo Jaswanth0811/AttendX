@@ -10,6 +10,8 @@ import '../utils/color_utils.dart';
 import 'daily_setup_prompt.dart';
 import 'subjects_screen.dart';
 import 'analytics_screen.dart';
+import 'attendance_entry_screen.dart';
+import '../widgets/attendance_wizard_sheet.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -71,23 +73,14 @@ class DashboardScreen extends StatelessWidget {
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          // Open calendar tab or let them mark directly
-          // For now, let's navigate to calendar screen
-          // We can push CalendarScreen
-          // Actually, let's push the calendar edit screen
-          final todayStart = DateTime(today.year, today.month, today.day).millisecondsSinceEpoch;
-          // But since they just need to edit or mark attendance, we can open the edit attendance screen.
-          // Wait, is there a way to open calendar?
-          // Since calendar is just the 3rd tab, we don't have direct tab navigation here, 
-          // but we can push CalendarScreen directly onto the stack.
-          // Wait! In the native app, the FAB navigated to AttendanceEntry:
-          // `onNavigateToAttendanceEntry = { navController.navigate(Screen.AttendanceEntry.createRoute(...)) }`
-          // Let's check how the edit attendance dialog/page works in the Flutter app.
-          // Currently, in calendar_screen.dart, wait, is there a mark screen?
-          // In the current dashboard_screen, they tap on a period to mark it. That works beautifully.
-          // We can push the SubjectsScreen or CalendarScreen when they click the FAB.
-          // Let's push CalendarScreen directly or let them add a new subject.
-          // Actually, let's push the SubjectsScreen or let them mark attendance.
+          final now = DateTime.now();
+          final todayStartMillis = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AttendanceEntryScreen(dateMillis: todayStartMillis),
+            ),
+          );
         },
         backgroundColor: theme.colorScheme.primary,
         foregroundColor: theme.colorScheme.onPrimary,
@@ -511,7 +504,7 @@ class DashboardScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      ...subjectAttendanceList.where((info) => info.totalCount > 0).map((info) {
+                      ...subjectAttendanceList.where((info) => info.totalCount > 0 && !attendance.excludedSubjectIds.contains(info.subject.id)).map((info) {
                         return Card(
                           elevation: 0,
                           margin: const EdgeInsets.only(bottom: 8),
@@ -521,27 +514,31 @@ class DashboardScreen extends StatelessWidget {
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      info.subject.name,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w500,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        info.subject.name,
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    ),
-                                    Text(
-                                      '${info.percentage.toInt()}% attendance',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: theme.colorScheme.onSurfaceVariant,
+                                      Text(
+                                        '${info.percentage.toInt()}% attendance',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: theme.colorScheme.onSurfaceVariant,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
+                                const SizedBox(width: 12),
                                 if (info.percentage < targetPercent)
                                   const Text(
                                     '🔴 Attend more!',

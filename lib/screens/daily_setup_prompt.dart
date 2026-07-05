@@ -28,6 +28,10 @@ class _DailySetupPromptState extends State<DailySetupPrompt> {
     final todayStr = DateFormat('yyyy-MM-dd').format(now);
     final weekday = now.weekday; // 1 = Monday, 7 = Sunday
 
+    if (weekday == DateTime.sunday) {
+      return;
+    }
+
     // Parse periods today
     final defaultPeriodsToday = _getPeriodsForDay(settings.periodsPerDayString, weekday);
 
@@ -244,6 +248,24 @@ class _DailyOverrideSheetState extends State<DailyOverrideSheet> {
     return h * 60 + m;
   }
 
+  Future<void> _selectTime(BuildContext context) async {
+    final parts = _startController.text.split(':');
+    final initialHour = parts.length == 2 ? (int.tryParse(parts[0]) ?? 9) : 9;
+    final initialMinute = parts.length == 2 ? (int.tryParse(parts[1]) ?? 0) : 0;
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initialHour, minute: initialMinute),
+    );
+
+    if (picked != null) {
+      final formatted = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+      setState(() {
+        _startController.text = formatted;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -280,11 +302,13 @@ class _DailyOverrideSheetState extends State<DailyOverrideSheet> {
               Expanded(
                 child: TextField(
                   controller: _startController,
+                  readOnly: true,
+                  onTap: () => _selectTime(context),
                   decoration: const InputDecoration(
-                    labelText: 'Start Time (HH:MM)',
+                    labelText: 'Start Time',
                     border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.access_time),
                   ),
-                  keyboardType: TextInputType.datetime,
                 ),
               ),
               const SizedBox(width: 12),

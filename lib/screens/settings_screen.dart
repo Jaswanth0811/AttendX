@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:intl/intl.dart';
 import '../providers/settings_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
@@ -10,14 +12,147 @@ import '../services/drive_service.dart';
 import '../database/database_helper.dart';
 import '../providers/attendance_provider.dart';
 import '../models/subject.dart';
+import 'attendance_history_screen.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  GoogleSignInAccount? _googleUser;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkGoogleSignInStatus();
+  }
+
+  Future<void> _checkGoogleSignInStatus() async {
+    try {
+      final user = await DriveService.googleSignIn.signInSilently();
+      if (mounted) {
+        setState(() {
+          _googleUser = user;
+        });
+      }
+    } catch (e) {
+      debugPrint("Google silent sign in check failed: $e");
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    try {
+      final user = await DriveService.googleSignIn.signIn();
+      if (mounted) {
+        setState(() {
+          _googleUser = user;
+        });
+      }
+    } catch (e) {
+      _showGoogleSignInError(e);
+    }
+  }
+
+  Future<void> _signOutWithGoogle() async {
+    try {
+      await DriveService.googleSignIn.signOut();
+      if (mounted) {
+        setState(() {
+          _googleUser = null;
+        });
+      }
+    } catch (e) {
+      debugPrint("Failed to sign out: $e");
+    }
+  }
+
+  void _showGoogleSignInError(Object error) {
+    if (!mounted) return;
+    final errorStr = error.toString();
+    String message = "Sign in failed: $error";
+    bool showInstructions = false;
+    
+    if (errorStr.contains("sign_in_failed") || errorStr.contains("10")) {
+      message = "Google Sign-In failed (Error 10: Developer Error).\n\n"
+          "This typically means the SHA-1 signing fingerprint of this app release is not registered in the Google Cloud / Firebase Console under the package name 'com.attendx.attendx'.";
+      showInstructions = true;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red),
+            SizedBox(width: 8),
+            Text("Google Sign-In Error"),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Dismiss"),
+          ),
+          if (showInstructions)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _showGoogleSignInSetupGuide();
+              },
+              child: const Text("Setup Guide"),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showGoogleSignInSetupGuide() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Firebase / Google API Setup Guide"),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("1. Open Google API Console or Firebase Console.", style: TextStyle(fontWeight: FontWeight.bold)),
+              Text("2. Navigate to project settings and add an Android App."),
+              Text("3. Set Package Name to:"),
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 4.0),
+                child: SelectionArea(
+                  child: Text(
+                    "com.attendx.attendx",
+                    style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, color: Colors.blue),
+                  ),
+                ),
+              ),
+              Text("4. Under SHA-1 Fingerprints, add the SHA-1 of the keystore used to sign the APK. (Check google_signin_instructions.md in workspace for details.)"),
+              SizedBox(height: 8),
+              Text("Once added, Google Cloud will authorize the requests and backup will work instantly!"),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final settings = Provider.of<SettingsProvider>(context);
+    final attendance = Provider.of<AttendanceProvider>(context);
 
     if (!settings.isLoaded) {
       return const Scaffold(
@@ -43,6 +178,21 @@ class SettingsScreen extends StatelessWidget {
             color: theme.colorScheme.surfaceContainer,
             child: Column(
               children: [
+                // Google Account Connection Status
+                ListTile(
+                  leading: Icon(
+                    _googleUser != null ? Icons.account_circle : Icons.account_circle_outlined,
+                    color: _googleUser != null ? Colors.blue : Colors.grey,
+                    size: 28,
+                  ),
+                  title: Text(_googleUser != null ? 'Connected to Google' : 'Google Account'),
+                  subtitle: Text(_googleUser != null ? _googleUser!.email : 'Not connected (Sign in for cloud backup)'),
+                  trailing: TextButton(
+                    onPressed: _googleUser != null ? _signOutWithGoogle : _signInWithGoogle,
+                    child: Text(_googleUser != null ? 'Sign Out' : 'Sign In'),
+                  ),
+                ),
+                const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.cloud_upload),
                   title: const Text('Backup to Device'),
@@ -96,6 +246,22 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
+                  leading: const Icon(Icons.date_range),
+                  title: const Text('Semester Setup'),
+                  subtitle: Text(
+                    'Start: ${DateFormat('yyyy-MM-dd').format(settings.semesterStartDate)} | End: ${DateFormat('yyyy-MM-dd').format(settings.semesterEndDate)}',
+                  ),
+                  onTap: () => _selectSemesterDates(context, settings),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.filter_alt),
+                  title: const Text('Select Calculated Subjects'),
+                  subtitle: const Text('Choose which subjects count in overall %'),
+                  onTap: () => _showSubjectsCalculationDialog(context, settings, attendance),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.schedule),
                   title: const Text('Timetable Global Settings'),
                   subtitle: const Text('Start/End times, periods and lunch duration'),
@@ -107,6 +273,37 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Periods Per Day'),
                   subtitle: const Text('Number of periods from Monday to Saturday'),
                   onTap: () => _showPeriodsPerDaySettings(context, settings),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          _buildSectionHeader(context, 'History & Info'),
+          Card(
+            elevation: 0,
+            color: theme.colorScheme.surfaceContainer,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.history),
+                  title: const Text('Attendance History'),
+                  subtitle: const Text('View and manage all past records'),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const AttendanceHistoryScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('About AttendX'),
+                  subtitle: const Text('Version 1.0.4'),
+                  onTap: () => _showAboutDialog(context),
                 ),
               ],
             ),
@@ -224,6 +421,118 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _selectSemesterDates(BuildContext context, SettingsProvider settings) async {
+    final initialRange = DateTimeRange(
+      start: settings.semesterStartDate,
+      end: settings.semesterEndDate,
+    );
+    final pickedRange = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      initialDateRange: initialRange,
+    );
+    if (pickedRange != null) {
+      await settings.updateSemesterDates(pickedRange.start, pickedRange.end);
+    }
+  }
+
+  void _showSubjectsCalculationDialog(BuildContext context, SettingsProvider settings, AttendanceProvider attendance) {
+    if (attendance.subjects.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Select Calculated Subjects'),
+          content: const Text('No subjects added yet. Please add subjects first.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Select Calculated Subjects'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: attendance.subjects.length,
+                  itemBuilder: (context, index) {
+                    final subject = attendance.subjects[index];
+                    final isCalculated = !settings.excludedSubjectIds.contains(subject.id);
+                    return CheckboxListTile(
+                      title: Text(subject.name),
+                      subtitle: Text(subject.code),
+                      value: isCalculated,
+                      onChanged: (val) async {
+                        if (val != null && subject.id != null) {
+                          await settings.toggleSubjectCalculation(subject.id!, val);
+                          setState(() {});
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Done'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAboutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('About AttendX'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'AttendX',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            SizedBox(height: 8),
+            Text('Version: 1.0.4'),
+            SizedBox(height: 16),
+            Text(
+              'AttendX is an offline-first college attendance manager built to keep your schedules tracked and help you calculate bunk days safely.',
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Developed by Jaswanth0811',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- Device Backup ---
   Future<void> _backupToDevice(BuildContext context) async {
     try {
@@ -292,7 +601,6 @@ class SettingsScreen extends StatelessWidget {
                 TextButton(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    // Reload data in provider
                     Provider.of<AttendanceProvider>(context, listen: false).loadData();
                   },
                   child: const Text('OK'),
@@ -313,6 +621,10 @@ class SettingsScreen extends StatelessWidget {
 
   // --- Drive Backup ---
   Future<void> _backupToDrive(BuildContext context) async {
+    if (_googleUser == null) {
+      await _signInWithGoogle();
+      if (_googleUser == null) return;
+    }
     try {
       final driveService = DriveService();
       await driveService.backupDatabase();
@@ -322,15 +634,15 @@ class SettingsScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to backup to Drive: $e')),
-        );
-      }
+      _showGoogleSignInError(e);
     }
   }
 
   Future<void> _restoreFromDrive(BuildContext context) async {
+    if (_googleUser == null) {
+      await _signInWithGoogle();
+      if (_googleUser == null) return;
+    }
     try {
       final driveService = DriveService();
       await driveService.restoreDatabase();
@@ -355,11 +667,7 @@ class SettingsScreen extends StatelessWidget {
         );
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to restore from Drive: $e')),
-        );
-      }
+      _showGoogleSignInError(e);
     }
   }
 
@@ -480,6 +788,29 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
     return h * 60 + m;
   }
 
+  Future<void> _selectTime(BuildContext context, bool isStart) async {
+    final controller = isStart ? _startController : _endController;
+    final parts = controller.text.split(':');
+    final initialHour = parts.length == 2 ? (int.tryParse(parts[0]) ?? 9) : 9;
+    final initialMinute = parts.length == 2 ? (int.tryParse(parts[1]) ?? 0) : 0;
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initialHour, minute: initialMinute),
+    );
+
+    if (picked != null) {
+      final formatted = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+      setState(() {
+        if (isStart) {
+          _startController.text = formatted;
+        } else {
+          _endController.text = formatted;
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -512,7 +843,7 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Enter time as HH:MM (24-hour)',
+            'Tap fields to select time using clock',
             style: TextStyle(fontSize: 12, color: Colors.grey),
           ),
           const SizedBox(height: 16),
@@ -521,22 +852,26 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
               Expanded(
                 child: TextField(
                   controller: _startController,
+                  readOnly: true,
+                  onTap: () => _selectTime(context, true),
                   decoration: const InputDecoration(
                     labelText: 'Start Time',
                     border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.access_time),
                   ),
-                  keyboardType: TextInputType.datetime,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: TextField(
                   controller: _endController,
+                  readOnly: true,
+                  onTap: () => _selectTime(context, false),
                   decoration: const InputDecoration(
                     labelText: 'End Time',
                     border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.access_time),
                   ),
-                  keyboardType: TextInputType.datetime,
                 ),
               ),
             ],
