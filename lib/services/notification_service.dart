@@ -16,33 +16,37 @@ class NotificationService {
   Future<void> init() async {
     if (_initialized) return;
 
-    tz.initializeTimeZones();
-    // Use local time zone
     try {
-      tz.setLocalLocation(tz.getLocation('Asia/Kolkata')); // Fallback, could be dynamically set
+      tz.initializeTimeZones();
+      // Use local time zone
+      try {
+        tz.setLocalLocation(tz.getLocation('Asia/Kolkata')); // Fallback, could be dynamically set
+      } catch (e) {
+        // Ignored
+      }
+
+      const AndroidInitializationSettings initializationSettingsAndroid =
+          AndroidInitializationSettings('launcher_icon');
+
+      const InitializationSettings initializationSettings = InitializationSettings(
+        android: initializationSettingsAndroid,
+      );
+
+      await _notificationsPlugin.initialize(
+        settings: initializationSettings,
+        onDidReceiveNotificationResponse: (details) {
+          // Handle notification tap
+        },
+      );
+
+      // Request permissions for Android 13+
+      _notificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
+      _notificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestExactAlarmsPermission();
+
+      _initialized = true;
     } catch (e) {
-      // Ignored
+      // Catch all to prevent app boot hang
     }
-
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('launcher_icon');
-
-    const InitializationSettings initializationSettings = InitializationSettings(
-      android: initializationSettingsAndroid,
-    );
-
-    await _notificationsPlugin.initialize(
-      settings: initializationSettings,
-      onDidReceiveNotificationResponse: (details) {
-        // Handle notification tap
-      },
-    );
-
-    // Request permissions for Android 13+
-    _notificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestNotificationsPermission();
-    _notificationsPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.requestExactAlarmsPermission();
-
-    _initialized = true;
   }
 
   Future<void> scheduleClassNotifications(List<TimetableSlot> slots, List<Subject> subjects) async {
