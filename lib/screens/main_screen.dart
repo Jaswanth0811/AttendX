@@ -4,6 +4,7 @@ import 'timetable_screen.dart';
 import 'calendar_screen.dart';
 import 'analytics_screen.dart';
 import 'settings_screen.dart';
+import '../services/update_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -14,6 +15,14 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UpdateService.checkForUpdates(context);
+    });
+  }
 
   final List<Widget> _screens = const [
     DashboardScreen(),
