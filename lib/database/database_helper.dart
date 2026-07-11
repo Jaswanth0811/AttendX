@@ -4,6 +4,7 @@ import '../models/semester.dart';
 import '../models/subject.dart';
 import '../models/timetable_entry.dart';
 import '../models/attendance_record.dart';
+import '../models/holiday.dart';
 import 'dart:io';
 
 class DatabaseHelper {
@@ -23,8 +24,9 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'attendx_database');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -85,6 +87,30 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX index_attendance_records_actualSubjectId ON attendance_records(actualSubjectId)');
     await db.execute('CREATE INDEX index_attendance_records_date ON attendance_records(date)');
     await db.execute('CREATE UNIQUE INDEX index_attendance_records_date_periodNumber ON attendance_records(date, periodNumber)');
+
+    await db.execute('''
+      CREATE TABLE holidays (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        createdAt INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('CREATE UNIQUE INDEX index_holidays_date ON holidays(date)');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE holidays (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date INTEGER NOT NULL,
+          name TEXT NOT NULL,
+          createdAt INTEGER NOT NULL
+        )
+      ''');
+      await db.execute('CREATE UNIQUE INDEX index_holidays_date ON holidays(date)');
+    }
   }
 
   // --- Semesters ---
@@ -193,6 +219,29 @@ class DatabaseHelper {
   Future<void> updateAttendance(AttendanceRecord record) async {
     final db = await database;
     await db.update('attendance_records', record.toMap(), where: 'id = ?', whereArgs: [record.id]);
+  }
+
+  // --- Holidays ---
+  Future<int> insertHoliday(Holiday holiday) async {
+    final db = await database;
+    return await db.insert('holidays', holiday.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<Holiday>> getHolidays() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('holidays', orderBy: 'date ASC');
+    return List.generate(maps.length, (i) => Holiday.fromMap(maps[i]));
+  }
+
+  Future<void> deleteHoliday(int id) async {
+    final db = await database;
+    await db.delete('holidays', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<bool> isHoliday(int dateMillis) async {
+    final db = await database;
+    final result = await db.query('holidays', where: 'date = ?', whereArgs: [dateMillis], limit: 1);
+    return result.isNotEmpty;
   }
 
   // --- Backup support ---

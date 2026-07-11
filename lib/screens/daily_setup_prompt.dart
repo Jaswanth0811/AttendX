@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/settings_provider.dart';
+import '../providers/attendance_provider.dart';
 import '../services/notification_service.dart';
 
 class DailySetupPrompt extends StatefulWidget {
@@ -24,11 +25,14 @@ class _DailySetupPromptState extends State<DailySetupPrompt> {
 
   void _checkPrompt() {
     final settings = Provider.of<SettingsProvider>(context, listen: false);
+    final attendance = Provider.of<AttendanceProvider>(context, listen: false);
     final now = DateTime.now();
     final todayStr = DateFormat('yyyy-MM-dd').format(now);
     final weekday = now.weekday; // 1 = Monday, 7 = Sunday
+    final todayStartMillis = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
 
-    if (weekday == DateTime.sunday) {
+    // Skip prompt on Sundays and holidays
+    if (weekday == DateTime.sunday || attendance.isHoliday(todayStartMillis)) {
       return;
     }
 

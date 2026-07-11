@@ -48,24 +48,52 @@ class _AttendanceEntryScreenState extends State<AttendanceEntryScreen> {
           ],
         ),
       ),
-      body: slots.isEmpty
-          ? _buildEmptyState(theme)
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: slots.length,
-              itemBuilder: (context, index) {
-                final slot = slots[index];
-                final scheduledSubject = attendance.subjects.firstWhere(
-                  (s) => s.id == slot.subjectId,
-                  orElse: () => Subject(id: -1, name: 'Free Period', code: 'FREE', facultyName: '', colorHex: '#9E9E9E', createdAt: 0),
-                );
+      body: attendance.isHoliday(widget.dateMillis)
+          ? _buildHolidayState(theme, attendance.getHolidayForDate(widget.dateMillis)?.name ?? 'Holiday')
+          : slots.isEmpty
+              ? _buildEmptyState(theme)
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: slots.length,
+                  itemBuilder: (context, index) {
+                    final slot = slots[index];
+                    final scheduledSubject = attendance.subjects.firstWhere(
+                      (s) => s.id == slot.subjectId,
+                      orElse: () => Subject(id: -1, name: 'Free Period', code: 'FREE', facultyName: '', colorHex: '#9E9E9E', createdAt: 0),
+                    );
 
-                final record = dateRecords.where((r) => r.periodNumber == slot.periodNumber).firstOrNull;
-                final isLocked = record != null;
+                    final record = dateRecords.where((r) => r.periodNumber == slot.periodNumber).firstOrNull;
+                    final isLocked = record != null;
 
-                return _buildEntryCard(context, slot, scheduledSubject, record, isLocked, attendance, theme);
-              },
-            ),
+                    return _buildEntryCard(context, slot, scheduledSubject, record, isLocked, attendance, theme);
+                  },
+                ),
+    );
+  }
+
+  Widget _buildHolidayState(ThemeData theme, String holidayName) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text('\ud83c\udf89', style: TextStyle(fontSize: 64)),
+          const SizedBox(height: 16),
+          const Text(
+            'This is a Holiday!',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.orange),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            holidayName,
+            style: TextStyle(fontSize: 16, color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'No attendance to mark today.',
+            style: TextStyle(fontSize: 14, color: theme.colorScheme.outline),
+          ),
+        ],
+      ),
     );
   }
 

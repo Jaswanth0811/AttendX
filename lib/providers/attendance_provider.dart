@@ -3,6 +3,7 @@ import '../models/semester.dart';
 import '../models/subject.dart';
 import '../models/timetable_entry.dart';
 import '../models/attendance_record.dart';
+import '../models/holiday.dart';
 import '../database/database_helper.dart';
 import '../services/notification_service.dart';
 
@@ -17,6 +18,8 @@ class AttendanceProvider with ChangeNotifier {
   List<AttendanceRecord> _allAttendance = [];
   Map<int, List<AttendanceRecord>> _attendanceByDate = {};
   List<int> _excludedSubjectIds = [];
+  List<Holiday> _holidays = [];
+  Set<int> _holidayDates = {};
   
   bool _isLoading = true;
   
@@ -26,7 +29,19 @@ class AttendanceProvider with ChangeNotifier {
   List<AttendanceRecord> get allAttendance => _allAttendance;
   Map<int, List<AttendanceRecord>> get attendanceByDate => _attendanceByDate;
   List<int> get excludedSubjectIds => _excludedSubjectIds;
+  List<Holiday> get holidays => _holidays;
+  Set<int> get holidayDates => _holidayDates;
   bool get isLoading => _isLoading;
+
+  bool isHoliday(int dateMillis) => _holidayDates.contains(dateMillis);
+
+  Holiday? getHolidayForDate(int dateMillis) {
+    try {
+      return _holidays.firstWhere((h) => h.date == dateMillis);
+    } catch (_) {
+      return null;
+    }
+  }
 
   void updateSettings(SettingsProvider settings) {
     _excludedSubjectIds = settings.excludedSubjectIds;
@@ -58,6 +73,10 @@ class AttendanceProvider with ChangeNotifier {
     }
     
     _calculateOverallPercentage();
+    
+    // Load holidays
+    _holidays = await _db.getHolidays();
+    _holidayDates = _holidays.map((h) => h.date).toSet();
     
     // Schedule notifications for upcoming classes
     await NotificationService().scheduleClassNotifications(_timetableSlots, _subjects);
@@ -120,6 +139,30 @@ class AttendanceProvider with ChangeNotifier {
     await loadData();
   }
 
+  // --- Holidays ---
+  Future<void> addHoliday(Holiday holiday) async {
+    await _db.insertHoliday(holiday);
+    await loadData();
+  }
+
+  Future<void> addHolidayRange(String name, DateTime start, DateTime end) async {
+    for (var d = start; !d.isAfter(end); d = d.add(const Duration(days: 1))) {
+      final dateMillis = DateTime(d.year, d.month, d.day).millisecondsSinceEpoch;
+      final holiday = Holiday(
+        date: dateMillis,
+        name: name,
+        createdAt: DateTime.now().millisecondsSinceEpoch,
+      );
+      await _db.insertHoliday(holiday);
+    }
+    await loadData();
+  }
+
+  Future<void> deleteHoliday(int id) async {
+    await _db.deleteHoliday(id);
+    await loadData();
+  }
+
   // --- Stats Calculation ---
   double _overallPercentage = 0.0;
   double getOverallAttendancePercentage() => _overallPercentage;
@@ -173,6 +216,10 @@ class AttendanceProvider with ChangeNotifier {
 
     // Iterate backwards
     for (var date in presentDates.reversed) {
+      // Skip over any holiday dates between currentDate and this date
+      while (currentDate > date && _holidayDates.contains(currentDate)) {
+        currentDate -= 86400000;
+      }
       if (date == currentDate || date == currentDate - 86400000) {
         currentStreak++;
         currentDate = date - 86400000;

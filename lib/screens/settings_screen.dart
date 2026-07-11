@@ -12,6 +12,7 @@ import '../services/drive_service.dart';
 import '../database/database_helper.dart';
 import '../providers/attendance_provider.dart';
 import '../models/subject.dart';
+import '../models/holiday.dart';
 import 'attendance_history_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -273,6 +274,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('Periods Per Day'),
                   subtitle: const Text('Number of periods from Monday to Saturday'),
                   onTap: () => _showPeriodsPerDaySettings(context, settings),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          _buildSectionHeader(context, 'Holidays'),
+          Card(
+            elevation: 0,
+            color: theme.colorScheme.surfaceContainer,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.celebration, color: Colors.orange),
+                  title: const Text('Manage Holidays'),
+                  subtitle: Text('${attendance.holidays.length} holidays added'),
+                  onTap: () => _showHolidaysManagementSheet(context, attendance),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.add_circle_outline, color: Colors.orange),
+                  title: const Text('Add Single Holiday'),
+                  onTap: () => _showAddSingleHolidayDialog(context, attendance),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.date_range, color: Colors.orange),
+                  title: const Text('Add Holiday Range'),
+                  subtitle: const Text('e.g., Semester break, festival week'),
+                  onTap: () => _showAddHolidayRangeDialog(context, attendance),
                 ),
               ],
             ),
@@ -721,6 +752,203 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
+  }
+
+  // --- Holiday Management ---
+  void _showHolidaysManagementSheet(BuildContext context, AttendanceProvider attendance) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final holidays = attendance.holidays;
+            return DraggableScrollableSheet(
+              initialChildSize: 0.6,
+              minChildSize: 0.3,
+              maxChildSize: 0.9,
+              expand: false,
+              builder: (context, scrollController) {
+                return Column(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          Icon(Icons.celebration, color: Colors.orange),
+                          SizedBox(width: 8),
+                          Text('All Holidays', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                    const Divider(),
+                    Expanded(
+                      child: holidays.isEmpty
+                          ? const Center(
+                              child: Text('No holidays added yet.', style: TextStyle(color: Colors.grey)),
+                            )
+                          : ListView.builder(
+                              controller: scrollController,
+                              itemCount: holidays.length,
+                              itemBuilder: (context, index) {
+                                final holiday = holidays[index];
+                                final date = DateTime.fromMillisecondsSinceEpoch(holiday.date);
+                                return ListTile(
+                                  leading: const Icon(Icons.event, color: Colors.orange),
+                                  title: Text(holiday.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text(DateFormat('EEEE, MMM d, yyyy').format(date)),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                    onPressed: () {
+                                      attendance.deleteHoliday(holiday.id!);
+                                      setModalState(() {});
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAddSingleHolidayDialog(BuildContext context, AttendanceProvider attendance) async {
+    final nameController = TextEditingController();
+    DateTime? selectedDate;
+
+    selectedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+
+    if (selectedDate == null || !context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Holiday'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              DateFormat('EEEE, MMM d, yyyy').format(selectedDate!),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Holiday Name',
+                hintText: 'e.g., Independence Day',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              if (name.isNotEmpty && selectedDate != null) {
+                final dateMillis = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day).millisecondsSinceEpoch;
+                attendance.addHoliday(Holiday(
+                  date: dateMillis,
+                  name: name,
+                  createdAt: DateTime.now().millisecondsSinceEpoch,
+                ));
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Holiday "$name" added!')),
+                );
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddHolidayRangeDialog(BuildContext context, AttendanceProvider attendance) async {
+    final nameController = TextEditingController();
+    DateTimeRange? selectedRange;
+
+    selectedRange = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+
+    if (selectedRange == null || !context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Holiday Range'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${DateFormat('MMM d').format(selectedRange!.start)} — ${DateFormat('MMM d, yyyy').format(selectedRange!.end)}',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            Text(
+              '${selectedRange!.end.difference(selectedRange!.start).inDays + 1} days',
+              style: const TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Holiday Name',
+                hintText: 'e.g., Dussehra Break',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              if (name.isNotEmpty && selectedRange != null) {
+                attendance.addHolidayRange(name, selectedRange!.start, selectedRange!.end);
+                Navigator.pop(ctx);
+                final days = selectedRange!.end.difference(selectedRange!.start).inDays + 1;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('$days holiday days added for "$name"!')),
+                );
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

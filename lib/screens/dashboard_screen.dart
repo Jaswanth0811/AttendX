@@ -70,26 +70,31 @@ class DashboardScreen extends StatelessWidget {
         .where((info) => info.totalCount > 0 && info.percentage < targetPercent)
         .toList();
 
+    final now = DateTime.now();
+    final todayStartMillis = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+    final isTodayHoliday = attendance.isHoliday(todayStartMillis);
+    final todayHoliday = attendance.getHolidayForDate(todayStartMillis);
+
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          final now = DateTime.now();
-          final todayStartMillis = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => AttendanceEntryScreen(dateMillis: todayStartMillis),
+      floatingActionButton: isTodayHoliday
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AttendanceEntryScreen(dateMillis: todayStartMillis),
+                  ),
+                );
+              },
+              backgroundColor: theme.colorScheme.primary,
+              foregroundColor: theme.colorScheme.onPrimary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              icon: const Icon(Icons.add),
+              label: const Text('Mark', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
-          );
-        },
-        backgroundColor: theme.colorScheme.primary,
-        foregroundColor: theme.colorScheme.onPrimary,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        icon: const Icon(Icons.add),
-        label: const Text('Mark', style: TextStyle(fontWeight: FontWeight.bold)),
-      ),
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
@@ -220,6 +225,51 @@ class DashboardScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 24),
+
+                    // Holiday Banner
+                    if (isTodayHoliday) ...[
+                      Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: const BorderSide(color: Colors.orange, width: 1.5),
+                        ),
+                        color: Colors.orange.withOpacity(0.1),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Row(
+                            children: [
+                              const Text('\ud83c\udf89', style: TextStyle(fontSize: 36)),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Today is a Holiday!',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orange,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      todayHoliday?.name ?? 'Enjoy your day off!',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
 
                     // Today's Schedule Header
                     Row(

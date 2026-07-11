@@ -5,6 +5,7 @@ import '../providers/attendance_provider.dart';
 import '../models/attendance_record.dart';
 import '../models/subject.dart';
 import '../models/timetable_entry.dart';
+import '../models/holiday.dart';
 import '../utils/color_utils.dart';
 import 'package:intl/intl.dart';
 import '../widgets/attendance_wizard_sheet.dart';
@@ -54,6 +55,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     color: Theme.of(context).colorScheme.primary,
                     shape: BoxShape.circle,
                   ),
+                ),
+                calendarBuilders: CalendarBuilders(
+                  defaultBuilder: (context, day, focusedDay) {
+                    final dayMillis = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
+                    if (attendance.isHoliday(dayMillis)) {
+                      return Container(
+                        margin: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.orange, width: 1.5),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text('${day.day}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                      );
+                    }
+                    return null;
+                  },
+                  todayBuilder: (context, day, focusedDay) {
+                    final dayMillis = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
+                    if (attendance.isHoliday(dayMillis)) {
+                      return Container(
+                        margin: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.3),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.orange, width: 2),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text('${day.day}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                      );
+                    }
+                    return null;
+                  },
                 ),
                 eventLoader: (day) {
                   final dayStartMillis = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
@@ -125,8 +160,49 @@ class _CalendarScreenState extends State<CalendarScreen> {
     
     return Column(
       children: [
+        // Holiday banner
+        if (attendance.isHoliday(dayStartMillis)) ...[
+          Card(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Colors.orange.withOpacity(0.12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: const BorderSide(color: Colors.orange, width: 1),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
+                children: [
+                  const Text('🎉', style: TextStyle(fontSize: 28)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Holiday', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.orange)),
+                        Text(
+                          attendance.getHolidayForDate(dayStartMillis)?.name ?? 'Holiday',
+                          style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.orange),
+                    onPressed: () {
+                      final holiday = attendance.getHolidayForDate(dayStartMillis);
+                      if (holiday != null) {
+                        attendance.deleteHoliday(holiday.id!);
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         Expanded(
-          child: displayItems.isEmpty
+          child: displayItems.isEmpty && !attendance.isHoliday(dayStartMillis)
               ? Center(
                   child: Text(
                     'No classes scheduled or attendance marked for ${DateFormat('MMM d, yyyy').format(_selectedDay!)}',
@@ -203,7 +279,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ),
         ),
         Padding(
-          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
           child: SizedBox(
             width: double.infinity,
             height: 48,
@@ -233,7 +309,62 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ),
         ),
+        if (!attendance.isHoliday(dayStartMillis))
+          Padding(
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+            child: SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: OutlinedButton.icon(
+                onPressed: () => _showAddHolidayDialog(context, attendance, dayStartMillis),
+                icon: const Icon(Icons.celebration, color: Colors.orange),
+                label: const Text('Mark as Holiday', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.orange),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
+    );
+  }
+
+  void _showAddHolidayDialog(BuildContext context, AttendanceProvider attendance, int dateMillis) {
+    final nameController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mark as Holiday'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: 'Holiday Name',
+            hintText: 'e.g., Independence Day',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              if (name.isNotEmpty) {
+                attendance.addHoliday(Holiday(
+                  date: dateMillis,
+                  name: name,
+                  createdAt: DateTime.now().millisecondsSinceEpoch,
+                ));
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
     );
   }
 }
