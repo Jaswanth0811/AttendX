@@ -1,4 +1,7 @@
+import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
+import 'package:sqflite/sqflite.dart';
 import '../models/semester.dart';
 import '../models/subject.dart';
 import '../models/timetable_entry.dart';
@@ -6,6 +9,7 @@ import '../models/attendance_record.dart';
 import '../models/holiday.dart';
 import '../database/database_helper.dart';
 import '../services/notification_service.dart';
+import '../services/drive_service.dart';
 
 import '../providers/settings_provider.dart';
 
@@ -20,6 +24,7 @@ class AttendanceProvider with ChangeNotifier {
   List<int> _excludedSubjectIds = [];
   List<Holiday> _holidays = [];
   Set<int> _holidayDates = {};
+  bool _autoSync = false;
   
   bool _isLoading = true;
   
@@ -45,6 +50,7 @@ class AttendanceProvider with ChangeNotifier {
 
   void updateSettings(SettingsProvider settings) {
     _excludedSubjectIds = settings.excludedSubjectIds;
+    _autoSync = settings.autoSync;
     _calculateOverallPercentage();
     notifyListeners();
   }
@@ -83,66 +89,127 @@ class AttendanceProvider with ChangeNotifier {
     
     _isLoading = false;
     notifyListeners();
+
+    if (_autoSync) {
+      _performStartupSync();
+    }
+  }
+
+  Future<void> _performStartupSync() async {
+    try {
+      final driveService = DriveService();
+      final driveTime = await driveService.getBackupModifiedTime();
+      if (driveTime == null) return;
+
+      final dbFolder = await getDatabasesPath();
+      final dbPath = p.join(dbFolder, 'attendx_database');
+      final dbFile = File(dbPath);
+
+      if (await dbFile.exists()) {
+        final localTime = await dbFile.lastModified();
+        if (driveTime.isAfter(localTime.add(const Duration(seconds: 2)))) {
+          await driveService.restoreDatabase(silentOnly: true);
+          
+          _activeSemester = await _db.getActiveSemester();
+          _subjects = await _db.getSubjects();
+          _timetableSlots = await _db.getTimetableSlots();
+          _allAttendance = await _db.getAllAttendance();
+          _attendanceByDate = {};
+          for (var record in _allAttendance) {
+            if (_attendanceByDate.containsKey(record.date)) {
+              _attendanceByDate[record.date]!.add(record);
+            } else {
+              _attendanceByDate[record.date] = [record];
+            }
+          }
+          _holidays = await _db.getHolidays();
+          _holidayDates = _holidays.map((h) => h.date).toSet();
+          _calculateOverallPercentage();
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint("Startup auto-sync failed: $e");
+    }
+  }
+
+  void _triggerAutoBackup() {
+    if (_autoSync) {
+      DriveService().backupDatabase(silentOnly: true).catchError((e) {
+        debugPrint("Background auto-backup failed: $e");
+      });
+    }
   }
 
   // --- Semesters ---
   Future<void> saveSemester(Semester semester) async {
     await _db.setActiveSemester(semester);
     await loadData();
+    _triggerAutoBackup();
   }
 
   // --- Subjects ---
   Future<void> addSubject(Subject subject) async {
     await _db.insertSubject(subject);
     await loadData();
+    _triggerAutoBackup();
   }
 
   Future<void> updateSubject(Subject subject) async {
     await _db.updateSubject(subject);
     await loadData();
+    _triggerAutoBackup();
   }
 
   Future<void> deleteSubject(int id) async {
     await _db.deleteSubject(id);
     await loadData();
+    _triggerAutoBackup();
   }
 
   // --- Timetable ---
   Future<void> saveTimetableSlot(TimetableSlot slot) async {
     await _db.insertTimetableSlot(slot);
     await loadData();
+    _triggerAutoBackup();
   }
 
   Future<void> deleteTimetableSlot(int id) async {
     await _db.deleteTimetableSlot(id);
     await loadData();
+    _triggerAutoBackup();
   }
 
   Future<void> clearTimetable() async {
     await _db.clearTimetable();
     await loadData();
+    _triggerAutoBackup();
   }
 
   // --- Attendance ---
   Future<void> addAttendance(AttendanceRecord record) async {
     await _db.insertAttendance(record);
     await loadData();
+    _triggerAutoBackup();
   }
 
   Future<void> updateAttendance(AttendanceRecord record) async {
     await _db.updateAttendance(record);
     await loadData();
+    _triggerAutoBackup();
   }
 
   Future<void> deleteAttendance(int id) async {
     await _db.deleteAttendance(id);
     await loadData();
+    _triggerAutoBackup();
   }
 
   // --- Holidays ---
   Future<void> addHoliday(Holiday holiday) async {
     await _db.insertHoliday(holiday);
     await loadData();
+    _triggerAutoBackup();
   }
 
   Future<void> addHolidayRange(String name, DateTime start, DateTime end) async {
@@ -156,11 +223,13 @@ class AttendanceProvider with ChangeNotifier {
       await _db.insertHoliday(holiday);
     }
     await loadData();
+    _triggerAutoBackup();
   }
 
   Future<void> deleteHoliday(int id) async {
     await _db.deleteHoliday(id);
     await loadData();
+    _triggerAutoBackup();
   }
 
   // --- Stats Calculation ---

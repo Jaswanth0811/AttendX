@@ -221,6 +221,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: const Text('Restore from cloud backup'),
                   onTap: () => _restoreFromDrive(context),
                 ),
+                 const Divider(height: 1),
+                SwitchListTile.adaptive(
+                  secondary: const Icon(Icons.sync, color: Colors.blue),
+                  title: const Text('Auto-Sync (Google Drive)'),
+                  subtitle: const Text('Sync data across devices automatically'),
+                  value: settings.autoSync,
+                  onChanged: (val) async {
+                    if (val) {
+                      if (_googleUser == null) {
+                        await _signInWithGoogle();
+                        if (_googleUser == null) return;
+                      }
+                      await settings.setAutoSync(true);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Auto-sync enabled! Syncing database...')),
+                        );
+                        try {
+                          await DriveService().backupDatabase(silentOnly: true);
+                        } catch (_) {}
+                      }
+                    } else {
+                      await settings.setAutoSync(false);
+                    }
+                  },
+                ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.file_download, color: Colors.green),

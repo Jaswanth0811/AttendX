@@ -18,6 +18,7 @@ class SettingsProvider with ChangeNotifier {
   DateTime? _semesterEndDate;
 
   bool _isLoaded = false;
+  bool _autoSync = false;
 
   SettingsProvider() {
     _loadSettings();
@@ -36,6 +37,7 @@ class SettingsProvider with ChangeNotifier {
   List<int> get excludedSubjectIds => _excludedSubjectIds;
   DateTime get semesterStartDate => _semesterStartDate ?? DateTime.now().subtract(const Duration(days: 90));
   DateTime get semesterEndDate => _semesterEndDate ?? DateTime.now().add(const Duration(days: 90));
+  bool get autoSync => _autoSync;
 
   Future<void> _loadSettings() async {
     _prefs = await SharedPreferences.getInstance();
@@ -56,6 +58,8 @@ class SettingsProvider with ChangeNotifier {
 
     final semEndMillis = _prefs?.getInt('semester_end_date');
     _semesterEndDate = semEndMillis != null ? DateTime.fromMillisecondsSinceEpoch(semEndMillis) : DateTime.now().add(const Duration(days: 90));
+
+    _autoSync = _prefs?.getBool('auto_sync') ?? false;
 
     _isLoaded = true;
     notifyListeners();
@@ -117,6 +121,12 @@ class SettingsProvider with ChangeNotifier {
     _semesterEndDate = end;
     await _prefs?.setInt('semester_start_date', start.millisecondsSinceEpoch);
     await _prefs?.setInt('semester_end_date', end.millisecondsSinceEpoch);
+    notifyListeners();
+  }
+
+  Future<void> setAutoSync(bool val) async {
+    _autoSync = val;
+    await _prefs?.setBool('auto_sync', val);
     notifyListeners();
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/googleapis_auth.dart' as auth;
@@ -24,12 +25,14 @@ class DriveService {
     serverClientId: '1053631789111-8pupmk1jmsfujpbuhp5ifdcnr81oesun.apps.googleusercontent.com',
     scopes: [
       drive.DriveApi.driveAppdataScope,
-      drive.DriveApi.driveFileScope,
     ],
   );
 
-  Future<drive.DriveApi?> _getDriveApi() async {
-    final account = await googleSignIn.signIn();
+  Future<drive.DriveApi?> _getDriveApi({bool silentOnly = false}) async {
+    GoogleSignInAccount? account = await googleSignIn.signInSilently();
+    if (account == null && !silentOnly) {
+      account = await googleSignIn.signIn();
+    }
     if (account == null) return null;
 
     final headers = await account.authHeaders;
@@ -40,8 +43,29 @@ class DriveService {
     return drive.DriveApi(client);
   }
 
-  Future<void> backupDatabase() async {
-    final driveApi = await _getDriveApi();
+  Future<DateTime?> getBackupModifiedTime() async {
+    try {
+      final driveApi = await _getDriveApi(silentOnly: true);
+      if (driveApi == null) return null;
+
+      final query = "name = 'attendx_database_backup.db' and 'appDataFolder' in parents";
+      final fileList = await driveApi.files.list(
+        spaces: 'appDataFolder',
+        q: query,
+        $fields: 'files(id, modifiedTime)',
+      );
+
+      if (fileList.files != null && fileList.files!.isNotEmpty) {
+        return fileList.files!.first.modifiedTime;
+      }
+    } catch (e) {
+      debugPrint("Failed to fetch backup modified time: $e");
+    }
+    return null;
+  }
+
+  Future<void> backupDatabase({bool silentOnly = false}) async {
+    final driveApi = await _getDriveApi(silentOnly: silentOnly);
     if (driveApi == null) throw Exception("User didn't sign in.");
 
     final dbFolder = await getDatabasesPath();
@@ -52,10 +76,8 @@ class DriveService {
       throw Exception("Database file not found.");
     }
 
-    // Force sqlite to flush WAL
     await DatabaseHelper().checkpoint();
 
-    // Find existing backup
     final query = "name = 'attendx_database_backup.db' and 'appDataFolder' in parents";
     final fileList = await driveApi.files.list(spaces: 'appDataFolder', q: query);
 
@@ -73,8 +95,8 @@ class DriveService {
     }
   }
 
-  Future<void> restoreDatabase() async {
-    final driveApi = await _getDriveApi();
+  Future<void> restoreDatabase({bool silentOnly = false}) async {
+    final driveApi = await _getDriveApi(silentOnly: silentOnly);
     if (driveApi == null) throw Exception("User didn't sign in.");
 
     final query = "name = 'attendx_database_backup.db' and 'appDataFolder' in parents";
@@ -102,7 +124,6 @@ class DriveService {
     await response.stream.pipe(sink);
     await sink.close();
     
-    // Remove WAL files so they don't corrupt the restored DB
     if (await walFile.exists()) await walFile.delete();
     if (await shmFile.exists()) await shmFile.delete();
   }
