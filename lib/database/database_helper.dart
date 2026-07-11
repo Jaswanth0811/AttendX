@@ -247,7 +247,7 @@ class DatabaseHelper {
   // --- Backup support ---
   Future<void> checkpoint() async {
     if (_database != null) {
-      await _database!.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+      await _database!.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
     }
   }
 
