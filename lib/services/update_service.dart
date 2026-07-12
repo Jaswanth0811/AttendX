@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
 
 class UpdateService {
   static const String _releasesUrl = 'https://api.github.com/repos/Jaswanth0811/AttendX/releases/latest';
@@ -93,7 +95,7 @@ class UpdateService {
           children: [
             const Icon(Icons.rocket_launch, color: Colors.blue, size: 28),
             const SizedBox(width: 10),
-            Expanded(child: Text('Update Available!')),
+            Expanded(child: const Text('Update Available!')),
           ],
         ),
         content: Column(
@@ -121,7 +123,7 @@ class UpdateService {
                 child: SingleChildScrollView(
                   child: Text(
                     releaseNotes,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[800]),
                   ),
                 ),
               ),
@@ -134,14 +136,108 @@ class UpdateService {
             child: const Text('Later'),
           ),
           FilledButton.icon(
-            onPressed: () async {
-              final uri = Uri.parse(downloadUrl);
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
+            onPressed: () {
+              Navigator.pop(ctx);
+              _startDownload(context, downloadUrl);
             },
             icon: const Icon(Icons.download),
             label: const Text('Install'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static void _startDownload(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        double progress = 0.0;
+        bool started = false;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            if (!started) {
+              started = true;
+              _downloadFile(url, (p) {
+                setState(() {
+                  progress = p;
+                });
+              }).then((filePath) async {
+                Navigator.pop(context); // Close dialog
+                if (filePath != null) {
+                  final result = await OpenFilex.open(filePath);
+                  if (result.type != ResultType.done && context.mounted) {
+                    _showError(context, "Could not open installer: ${result.message}. You can manually find the downloaded APK in your device's downloads.");
+                  }
+                } else {
+                  if (context.mounted) {
+                    _showError(context, "Failed to download update APK file.");
+                  }
+                }
+              });
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text('Downloading Update...'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LinearProgressIndicator(value: progress),
+                  const SizedBox(height: 16),
+                  Text('${(progress * 100).toInt()}% downloaded'),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  static Future<String?> _downloadFile(String url, Function(double) onProgress) async {
+    try {
+      final client = http.Client();
+      final request = http.Request('GET', Uri.parse(url));
+      final response = await client.send(request);
+
+      if (response.statusCode != 200) return null;
+
+      final contentLength = response.contentLength ?? 1;
+      final tempDir = await getTemporaryDirectory();
+      final filePath = '${tempDir.path}/AttendX-update.apk';
+      final file = File(filePath);
+
+      final bytes = <int>[];
+      int downloaded = 0;
+
+      await for (var chunk in response.stream) {
+        bytes.addAll(chunk);
+        downloaded += chunk.length;
+        onProgress(downloaded / contentLength);
+      }
+
+      await file.writeAsBytes(bytes);
+      client.close();
+      return filePath;
+    } catch (e) {
+      debugPrint("Download error: $e");
+      return null;
+    }
+  }
+
+  static void _showError(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Update Error'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
           ),
         ],
       ),
