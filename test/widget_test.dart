@@ -1,30 +1,57 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:attendx/main.dart';
+import 'package:attendx/models/special_schedule.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('SpecialSchedule Model Tests', () {
+    test('toMap() and fromMap() serialization', () {
+      final schedule = SpecialSchedule(
+        id: 42,
+        name: 'Skill Enhancement Course',
+        scheduleType: 'Course',
+        subjectId: 10,
+        startDateMillis: 10000000,
+        endDateMillis: 20000000,
+        dailyStartTime: '09:00 AM',
+        dailyEndTime: '04:00 PM',
+      );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+      final map = schedule.toMap();
+      expect(map['id'], 42);
+      expect(map['name'], 'Skill Enhancement Course');
+      expect(map['scheduleType'], 'Course');
+      expect(map['subjectId'], 10);
+      expect(map['startDateMillis'], 10000000);
+      expect(map['endDateMillis'], 20000000);
+      expect(map['dailyStartTime'], '09:00 AM');
+      expect(map['dailyEndTime'], '04:00 PM');
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+      final deserialized = SpecialSchedule.fromMap(map);
+      expect(deserialized.id, 42);
+      expect(deserialized.name, 'Skill Enhancement Course');
+      expect(deserialized.scheduleType, 'Course');
+      expect(deserialized.subjectId, 10);
+      expect(deserialized.startDateMillis, 10000000);
+      expect(deserialized.endDateMillis, 20000000);
+      expect(deserialized.dailyStartTime, '09:00 AM');
+      expect(deserialized.dailyEndTime, '04:00 PM');
+    });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    test('isActiveForDate checks date ranges correctly', () {
+      final schedule = SpecialSchedule(
+        name: 'Workshop',
+        scheduleType: 'Workshop',
+        subjectId: 5,
+        startDateMillis: 1000,
+        endDateMillis: 2000,
+        dailyStartTime: '10:00 AM',
+        dailyEndTime: '12:00 PM',
+      );
+
+      expect(schedule.isActiveForDate(500), isFalse);
+      expect(schedule.isActiveForDate(1000), isTrue);
+      expect(schedule.isActiveForDate(1500), isTrue);
+      expect(schedule.isActiveForDate(2000), isTrue);
+      expect(schedule.isActiveForDate(2500), isFalse);
+    });
   });
 }

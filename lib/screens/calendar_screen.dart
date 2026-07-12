@@ -133,6 +133,52 @@ class _CalendarScreenState extends State<CalendarScreen> {
     
     return Column(
       children: [
+        // Special Schedule Banner
+        if (attendance.getSpecialScheduleForDate(dayStartMillis) != null && !attendance.isHoliday(dayStartMillis)) ...[
+          (() {
+            final specialSchedule = attendance.getSpecialScheduleForDate(dayStartMillis)!;
+            return Card(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Colors.deepPurple.withOpacity(0.08),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: const BorderSide(color: Colors.deepPurple, width: 1.2),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.event_note, color: Colors.deepPurple, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            specialSchedule.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Colors.deepPurple,
+                            ),
+                          ),
+                          Text(
+                            '${specialSchedule.scheduleType}  •  ${specialSchedule.dailyStartTime} - ${specialSchedule.dailyEndTime}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          })(),
+        ],
+
         // Holiday banner
         if (attendance.isHoliday(dayStartMillis)) ...[
           Card(

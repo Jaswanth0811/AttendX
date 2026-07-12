@@ -4,6 +4,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../models/timetable_entry.dart';
 import '../models/subject.dart';
 import '../models/special_timetable.dart';
+import '../models/special_schedule.dart';
 import '../database/database_helper.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,39 +56,63 @@ class NotificationService {
   Future<void> scheduleClassNotifications(List<TimetableSlot> slots, List<Subject> subjects) async {
     await _notificationsPlugin.cancelAll(); // Clear old notifications
 
-    if (slots.isEmpty) return;
+    if (slots.isEmpty && subjects.isEmpty) return; // Special schedules might need to run even if weekly slots are empty
 
     final now = DateTime.now();
     final prefs = await SharedPreferences.getInstance();
     final periodDuration = prefs.getInt('period_duration_minutes') ?? 60;
     
-    // Load special overrides from DB
+    // Load overrides from DB
     final db = DatabaseHelper();
     final specialOverrides = await db.getSpecialTimetables();
+    final holidays = await db.getHolidays();
+    final holidayDates = holidays.map((h) => h.date).toSet();
+    final specialSchedules = await db.getSpecialSchedules();
     
     // We only schedule for today and tomorrow for simplicity to avoid hitting OS limits
     for (int dayOffset = 0; dayOffset <= 1; dayOffset++) {
       final targetDate = now.add(Duration(days: dayOffset));
       final midnightDateMillis = DateTime(targetDate.year, targetDate.month, targetDate.day).millisecondsSinceEpoch;
       
-      // Check if we have a special override for this date
-      final special = specialOverrides.firstWhere(
-        (st) => st.dateMillis == midnightDateMillis,
-        orElse: () => SpecialTimetable(dateMillis: 0, targetDayOfWeek: -1),
-      );
-      
-      final int targetDayOfWeek;
-      if (special.targetDayOfWeek != -1) {
-        if (special.targetDayOfWeek == 0) {
-          // Holiday, no classes today!
-          continue;
-        }
-        targetDayOfWeek = special.targetDayOfWeek;
-      } else {
-        targetDayOfWeek = targetDate.weekday;
+      // 1. Check if we have a holiday today
+      if (holidayDates.contains(midnightDateMillis)) {
+        continue;
       }
 
-      final rawDaySlots = slots.where((s) => s.dayOfWeek == targetDayOfWeek).toList();
+      // 2. Check if a Special Schedule is active for this date
+      SpecialSchedule? activeSchedule;
+      try {
+        activeSchedule = specialSchedules.firstWhere((ss) => ss.isActiveForDate(midnightDateMillis));
+      } catch (_) {}
+
+      final List<TimetableSlot> rawDaySlots;
+      if (activeSchedule != null) {
+        rawDaySlots = _generateSlotsFromSpecialSchedule(activeSchedule);
+      } else {
+        // Check if we have a special override (day-swap) for this date
+        final special = specialOverrides.firstWhere(
+          (st) => st.dateMillis == midnightDateMillis,
+          orElse: () => SpecialTimetable(dateMillis: 0, targetDayOfWeek: -1),
+        );
+        
+        final int targetDayOfWeek;
+        if (special.targetDayOfWeek != -1) {
+          if (special.targetDayOfWeek == 0) {
+            // Holiday, no classes today!
+            continue;
+          }
+          targetDayOfWeek = special.targetDayOfWeek;
+        } else {
+          // Regular day, skip Sunday by default
+          if (targetDate.weekday == DateTime.sunday) {
+            continue;
+          }
+          targetDayOfWeek = targetDate.weekday;
+        }
+
+        rawDaySlots = slots.where((s) => s.dayOfWeek == targetDayOfWeek).toList();
+      }
+
       final List<TimetableSlot> daySlots = [];
       for (var slot in rawDaySlots) {
         daySlots.addAll(slot.expandSlots(periodDuration));
@@ -131,6 +156,48 @@ class NotificationService {
         }
       }
     }
+  }
+
+  List<TimetableSlot> _generateSlotsFromSpecialSchedule(SpecialSchedule ss) {
+    try {
+      int startMins = _parseTimeToMinutes(ss.dailyStartTime);
+      int endMins = _parseTimeToMinutes(ss.dailyEndTime);
+      if (endMins <= startMins) return [];
+
+      final startH = startMins ~/ 60;
+      final startM = startMins % 60;
+      final endH = endMins ~/ 60;
+      final endM = endMins % 60;
+
+      final startStr = '${startH.toString().padLeft(2, '0')}:${startM.toString().padLeft(2, '0')}';
+      final endStr = '${endH.toString().padLeft(2, '0')}:${endM.toString().padLeft(2, '0')}';
+
+      return [
+        TimetableSlot(
+          id: ss.id != null ? 90000 + ss.id! : null,
+          dayOfWeek: 1,
+          periodNumber: 1,
+          startTime: startStr,
+          endTime: endStr,
+          subjectId: ss.subjectId,
+        ),
+      ];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  int _parseTimeToMinutes(String time) {
+    time = time.trim();
+    final isPM = time.toUpperCase().contains('PM');
+    final isAM = time.toUpperCase().contains('AM');
+    final cleaned = time.replaceAll(RegExp(r'[AaPpMm\s]'), '');
+    final parts = cleaned.split(':');
+    int hours = int.tryParse(parts[0]) ?? 0;
+    int minutes = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+    if (isPM && hours < 12) hours += 12;
+    if (isAM && hours == 12) hours = 0;
+    return hours * 60 + minutes;
   }
 
   Future<void> scheduleDailyPeriodEndReminders({
