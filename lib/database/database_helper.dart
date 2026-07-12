@@ -6,6 +6,7 @@ import '../models/timetable_entry.dart';
 import '../models/attendance_record.dart';
 import '../models/holiday.dart';
 import '../models/special_timetable.dart';
+import '../models/special_schedule.dart';
 import 'dart:io';
 
 class DatabaseHelper {
@@ -25,7 +26,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'attendx_database');
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -108,6 +109,20 @@ class DatabaseHelper {
       )
     ''');
     await db.execute('CREATE UNIQUE INDEX index_special_timetables_date ON special_timetables(dateMillis)');
+
+    await db.execute('''
+      CREATE TABLE special_schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        scheduleType TEXT NOT NULL,
+        subjectId INTEGER NOT NULL,
+        startDateMillis INTEGER NOT NULL,
+        endDateMillis INTEGER NOT NULL,
+        dailyStartTime TEXT NOT NULL,
+        dailyEndTime TEXT NOT NULL,
+        FOREIGN KEY (subjectId) REFERENCES subjects (id) ON DELETE CASCADE
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -132,6 +147,21 @@ class DatabaseHelper {
         )
       ''');
       await db.execute('CREATE UNIQUE INDEX index_special_timetables_date ON special_timetables(dateMillis)');
+    }
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE special_schedules (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          scheduleType TEXT NOT NULL,
+          subjectId INTEGER NOT NULL,
+          startDateMillis INTEGER NOT NULL,
+          endDateMillis INTEGER NOT NULL,
+          dailyStartTime TEXT NOT NULL,
+          dailyEndTime TEXT NOT NULL,
+          FOREIGN KEY (subjectId) REFERENCES subjects (id) ON DELETE CASCADE
+        )
+      ''');
     }
   }
 
@@ -281,6 +311,23 @@ class DatabaseHelper {
   Future<void> deleteSpecialTimetable(int id) async {
     final db = await database;
     await db.delete('special_timetables', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // --- Special Schedules ---
+  Future<int> insertSpecialSchedule(SpecialSchedule ss) async {
+    final db = await database;
+    return await db.insert('special_schedules', ss.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<SpecialSchedule>> getSpecialSchedules() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('special_schedules', orderBy: 'startDateMillis ASC');
+    return List.generate(maps.length, (i) => SpecialSchedule.fromMap(maps[i]));
+  }
+
+  Future<void> deleteSpecialSchedule(int id) async {
+    final db = await database;
+    await db.delete('special_schedules', where: 'id = ?', whereArgs: [id]);
   }
 
   // --- Backup support ---

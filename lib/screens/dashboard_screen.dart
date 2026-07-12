@@ -155,8 +155,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         .toList();
 
     final specialToday = attendance.getSpecialTimetableForDate(todayStartMillis);
+    final specialScheduleToday = attendance.getSpecialScheduleForDate(todayStartMillis);
     final isTodayHoliday = attendance.isHoliday(todayStartMillis) || (specialToday?.targetDayOfWeek == 0);
-    final isSunday = (today.weekday == DateTime.sunday && specialToday == null) || (specialToday?.targetDayOfWeek == 7);
+    final isSunday = (today.weekday == DateTime.sunday && specialToday == null && specialScheduleToday == null) || (specialToday?.targetDayOfWeek == 7);
     final todayHoliday = attendance.getHolidayForDate(todayStartMillis);
 
     return Scaffold(
@@ -409,14 +410,59 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                       const SizedBox(height: 24),
                     ],
 
+                    // Special Schedule Banner
+                    if (specialScheduleToday != null && !isTodayHoliday) ...[
+                      Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: const BorderSide(color: Colors.deepPurple, width: 1.5),
+                        ),
+                        color: Colors.deepPurple.withOpacity(0.08),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.event_note, color: Colors.deepPurple, size: 32),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      specialScheduleToday!.name,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.deepPurple,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${specialScheduleToday.scheduleType}  •  ${specialScheduleToday.dailyStartTime} - ${specialScheduleToday.dailyEndTime}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
                     // Today's Schedule Header
                     if (!isSunday) ...[
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            "Today's Schedule",
-                            style: TextStyle(
+                          Text(
+                            specialScheduleToday != null ? specialScheduleToday.name : "Today's Schedule",
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),

@@ -8,6 +8,7 @@ import '../models/timetable_entry.dart';
 import '../models/attendance_record.dart';
 import '../models/holiday.dart';
 import '../models/special_timetable.dart';
+import '../models/special_schedule.dart';
 import '../database/database_helper.dart';
 import '../services/notification_service.dart';
 import '../services/drive_service.dart';
@@ -26,6 +27,7 @@ class AttendanceProvider with ChangeNotifier {
   List<Holiday> _holidays = [];
   Set<int> _holidayDates = {};
   List<SpecialTimetable> _specialTimetables = [];
+  List<SpecialSchedule> _specialSchedules = [];
   bool _autoSync = false;
   
   bool _isLoading = true;
@@ -39,6 +41,7 @@ class AttendanceProvider with ChangeNotifier {
   List<Holiday> get holidays => _holidays;
   Set<int> get holidayDates => _holidayDates;
   List<SpecialTimetable> get specialTimetables => _specialTimetables;
+  List<SpecialSchedule> get specialSchedules => _specialSchedules;
   bool get isLoading => _isLoading;
 
   bool isHoliday(int dateMillis) => _holidayDates.contains(dateMillis);
@@ -87,6 +90,7 @@ class AttendanceProvider with ChangeNotifier {
     _holidays = await _db.getHolidays();
     _holidayDates = _holidays.map((h) => h.date).toSet();
     _specialTimetables = await _db.getSpecialTimetables();
+    _specialSchedules = await _db.getSpecialSchedules();
     
     // Schedule notifications for upcoming classes
     await NotificationService().scheduleClassNotifications(_timetableSlots, _subjects);
@@ -389,6 +393,15 @@ class AttendanceProvider with ChangeNotifier {
 
   List<TimetableSlot> getSlotsForDate(int dateMillis) {
     final date = DateTime.fromMillisecondsSinceEpoch(dateMillis);
+    
+    // 1. Check if a Special Schedule (temporary course) is active for this date
+    final activeSchedule = getSpecialScheduleForDate(dateMillis);
+    if (activeSchedule != null) {
+      // Generate virtual slots from the special schedule's daily timing
+      return _generateSlotsFromSpecialSchedule(activeSchedule);
+    }
+    
+    // 2. Check if a day-swap override exists
     final special = getSpecialTimetableForDate(dateMillis);
     
     final int dayOfWeek;
@@ -402,5 +415,72 @@ class AttendanceProvider with ChangeNotifier {
     }
     
     return _timetableSlots.where((s) => s.dayOfWeek == dayOfWeek).toList();
+  }
+
+  // --- Special Schedules ---
+  Future<void> addSpecialSchedule(SpecialSchedule ss) async {
+    await _db.insertSpecialSchedule(ss);
+    _specialSchedules = await _db.getSpecialSchedules();
+    notifyListeners();
+  }
+
+  Future<void> deleteSpecialSchedule(int id) async {
+    await _db.deleteSpecialSchedule(id);
+    _specialSchedules = await _db.getSpecialSchedules();
+    notifyListeners();
+  }
+
+  SpecialSchedule? getSpecialScheduleForDate(int dateMillis) {
+    try {
+      return _specialSchedules.firstWhere((ss) => ss.isActiveForDate(dateMillis));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<TimetableSlot> _generateSlotsFromSpecialSchedule(SpecialSchedule ss) {
+    try {
+      // Parse start and end times
+      int startMins = _parseTimeToMinutes(ss.dailyStartTime);
+      int endMins = _parseTimeToMinutes(ss.dailyEndTime);
+      if (endMins <= startMins) return [];
+
+      // Create a single virtual slot spanning the entire schedule time
+      // The expandSlots method will split it into individual periods
+      final startH = startMins ~/ 60;
+      final startM = startMins % 60;
+      final endH = endMins ~/ 60;
+      final endM = endMins % 60;
+
+      final startStr = '${startH.toString().padLeft(2, '0')}:${startM.toString().padLeft(2, '0')}';
+      final endStr = '${endH.toString().padLeft(2, '0')}:${endM.toString().padLeft(2, '0')}';
+
+      return [
+        TimetableSlot(
+          id: ss.id != null ? 90000 + ss.id! : null,
+          dayOfWeek: 1, // Doesn't matter, this is date-based
+          periodNumber: 1,
+          startTime: startStr,
+          endTime: endStr,
+          subjectId: ss.subjectId,
+        ),
+      ];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  int _parseTimeToMinutes(String time) {
+    // Handles both "HH:mm" and "hh:mm AM/PM" formats
+    time = time.trim();
+    final isPM = time.toUpperCase().contains('PM');
+    final isAM = time.toUpperCase().contains('AM');
+    final cleaned = time.replaceAll(RegExp(r'[AaPpMm\s]'), '');
+    final parts = cleaned.split(':');
+    int hours = int.tryParse(parts[0]) ?? 0;
+    int mins = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
+    if (isPM && hours != 12) hours += 12;
+    if (isAM && hours == 12) hours = 0;
+    return hours * 60 + mins;
   }
 }

@@ -14,6 +14,7 @@ import '../providers/attendance_provider.dart';
 import '../models/subject.dart';
 import '../models/holiday.dart';
 import '../models/special_timetable.dart';
+import '../models/special_schedule.dart';
 import 'attendance_history_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/notification_service.dart';
@@ -369,6 +370,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('Special Timetables / Day-Swaps'),
                   subtitle: Text('${attendance.specialTimetables.length} overrides configured'),
                   onTap: () => _showSpecialTimetableManagementSheet(context, attendance),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          _buildSectionHeader(context, 'Special Schedules'),
+          Card(
+            elevation: 0,
+            color: theme.colorScheme.surfaceContainer,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.event_note, color: Colors.deepPurple),
+                  title: const Text('Manage Special Schedules'),
+                  subtitle: Text('${attendance.specialSchedules.length} schedules added'),
+                  onTap: () => _showSpecialScheduleManagementSheet(context, attendance),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.add_circle_outline, color: Colors.deepPurple),
+                  title: const Text('Add Special Schedule'),
+                  subtitle: const Text('Courses, workshops, exams, events'),
+                  onTap: () => _showAddSpecialScheduleDialog(context, attendance),
                 ),
               ],
             ),
@@ -1013,6 +1038,425 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showSpecialScheduleManagementSheet(BuildContext context, AttendanceProvider attendance) {
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    Icon(Icons.event_note, color: Colors.deepPurple, size: 28),
+                    const SizedBox(width: 10),
+                    Text('Special Schedules', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle, color: Colors.deepPurple, size: 28),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _showAddSpecialScheduleDialog(context, attendance);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: attendance.specialSchedules.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.event_busy, size: 48, color: Colors.grey[400]),
+                          const SizedBox(height: 12),
+                          Text('No special schedules yet', style: TextStyle(color: Colors.grey[500], fontSize: 16)),
+                          const SizedBox(height: 4),
+                          Text('Add courses, workshops, exams, or events', style: TextStyle(color: Colors.grey[400], fontSize: 13)),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: attendance.specialSchedules.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final ss = attendance.specialSchedules[i];
+                        final start = DateTime.fromMillisecondsSinceEpoch(ss.startDateMillis);
+                        final end = DateTime.fromMillisecondsSinceEpoch(ss.endDateMillis);
+                        final subject = attendance.subjects.where((s) => s.id == ss.subjectId).firstOrNull;
+                        final subjectName = subject?.name ?? 'Unknown Subject';
+                        final now = DateTime.now();
+                        final todayMillis = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+                        final isActive = ss.isActiveForDate(todayMillis);
+                        final isPast = todayMillis > ss.endDateMillis;
+
+                        // Type icon
+                        IconData typeIcon;
+                        Color typeColor;
+                        switch (ss.scheduleType.toLowerCase()) {
+                          case 'course': typeIcon = Icons.school; typeColor = Colors.deepPurple; break;
+                          case 'workshop': typeIcon = Icons.build_circle; typeColor = Colors.teal; break;
+                          case 'exam': typeIcon = Icons.quiz; typeColor = Colors.red; break;
+                          case 'event': typeIcon = Icons.celebration; typeColor = Colors.orange; break;
+                          default: typeIcon = Icons.event_note; typeColor = Colors.blueGrey;
+                        }
+
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: CircleAvatar(
+                            backgroundColor: typeColor.withOpacity(0.15),
+                            child: Icon(typeIcon, color: typeColor, size: 22),
+                          ),
+                          title: Row(
+                            children: [
+                              Expanded(child: Text(ss.name, style: const TextStyle(fontWeight: FontWeight.w600))),
+                              if (isActive)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text('Active', style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
+                                )
+                              else if (isPast)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text('Ended', style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
+                                ),
+                            ],
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 2),
+                              Text('$subjectName  •  ${ss.scheduleType}', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                              Text(
+                                '${start.day}/${start.month}/${start.year} → ${end.day}/${end.month}/${end.year}  •  ${ss.dailyStartTime} - ${ss.dailyEndTime}',
+                                style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                              ),
+                            ],
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (dCtx) => AlertDialog(
+                                  title: const Text('Delete Schedule'),
+                                  content: Text('Remove "${ss.name}"?'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.pop(dCtx, false), child: const Text('Cancel')),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(dCtx, true),
+                                      child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true && ss.id != null) {
+                                await attendance.deleteSpecialSchedule(ss.id!);
+                                if (ctx.mounted) Navigator.pop(ctx);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('"${ss.name}" deleted'), backgroundColor: Colors.redAccent),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                        );
+                      },
+                    ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAddSpecialScheduleDialog(BuildContext context, AttendanceProvider attendance) {
+    final theme = Theme.of(context);
+    final nameController = TextEditingController();
+    String selectedType = 'Course';
+    int? selectedSubjectId;
+    DateTimeRange? dateRange;
+    TimeOfDay startTime = const TimeOfDay(hour: 9, minute: 0);
+    TimeOfDay endTime = const TimeOfDay(hour: 16, minute: 0);
+
+    final types = ['Course', 'Workshop', 'Exam', 'Event', 'Other'];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final dateRangeText = dateRange != null
+                ? '${dateRange!.start.day}/${dateRange!.start.month}/${dateRange!.start.year} → ${dateRange!.end.day}/${dateRange!.end.month}/${dateRange!.end.year}'
+                : 'Tap to select date range';
+            final startTimeText = startTime.format(context);
+            final endTimeText = endTime.format(context);
+
+            return Container(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 20, right: 20, top: 16,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40, height: 4,
+                          decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const Icon(Icons.event_note, color: Colors.deepPurple, size: 28),
+                          const SizedBox(width: 10),
+                          Text('Add Special Schedule', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text('Temporary courses, workshops, exams that override your regular timetable',
+                          style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+                      const SizedBox(height: 20),
+
+                      // Schedule Name
+                      TextField(
+                        controller: nameController,
+                        decoration: InputDecoration(
+                          labelText: 'Schedule Name',
+                          hintText: 'e.g., Skill Enhancement Course',
+                          prefixIcon: const Icon(Icons.label_outline),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                          filled: true,
+                          fillColor: theme.colorScheme.surfaceContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Schedule Type Dropdown
+                      DropdownButtonFormField<String>(
+                        value: selectedType,
+                        decoration: InputDecoration(
+                          labelText: 'Schedule Type',
+                          prefixIcon: const Icon(Icons.category_outlined),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                          filled: true,
+                          fillColor: theme.colorScheme.surfaceContainer,
+                        ),
+                        items: types.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                        onChanged: (val) => setState(() => selectedType = val!),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Subject Dropdown
+                      DropdownButtonFormField<int>(
+                        value: selectedSubjectId,
+                        decoration: InputDecoration(
+                          labelText: 'Subject',
+                          prefixIcon: const Icon(Icons.book_outlined),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                          filled: true,
+                          fillColor: theme.colorScheme.surfaceContainer,
+                        ),
+                        items: attendance.subjects.map((s) => DropdownMenuItem(
+                          value: s.id,
+                          child: Text(s.name, overflow: TextOverflow.ellipsis),
+                        )).toList(),
+                        onChanged: (val) => setState(() => selectedSubjectId = val),
+                        hint: const Text('Select subject'),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Date Range
+                      InkWell(
+                        onTap: () async {
+                          final picked = await showDateRangePicker(
+                            context: context,
+                            firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                            initialDateRange: dateRange,
+                            builder: (ctx, child) {
+                              return Theme(
+                                data: theme.copyWith(
+                                  colorScheme: theme.colorScheme.copyWith(primary: Colors.deepPurple),
+                                ),
+                                child: child!,
+                              );
+                            },
+                          );
+                          if (picked != null) setState(() => dateRange = picked);
+                        },
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'Date Range',
+                            prefixIcon: const Icon(Icons.date_range),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                            filled: true,
+                            fillColor: theme.colorScheme.surfaceContainer,
+                          ),
+                          child: Text(dateRangeText, style: TextStyle(
+                            color: dateRange != null ? theme.colorScheme.onSurface : Colors.grey[500],
+                          )),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Time Row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showTimePicker(context: context, initialTime: startTime);
+                                if (picked != null) setState(() => startTime = picked);
+                              },
+                              child: InputDecorator(
+                                decoration: InputDecoration(
+                                  labelText: 'Daily Start',
+                                  prefixIcon: const Icon(Icons.access_time, size: 20),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                                  filled: true,
+                                  fillColor: theme.colorScheme.surfaceContainer,
+                                ),
+                                child: Text(startTimeText),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showTimePicker(context: context, initialTime: endTime);
+                                if (picked != null) setState(() => endTime = picked);
+                              },
+                              child: InputDecorator(
+                                decoration: InputDecoration(
+                                  labelText: 'Daily End',
+                                  prefixIcon: const Icon(Icons.access_time, size: 20),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                                  filled: true,
+                                  fillColor: theme.colorScheme.surfaceContainer,
+                                ),
+                                child: Text(endTimeText),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Save Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.check),
+                          label: const Text('Add Schedule', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          onPressed: () async {
+                            // Validate
+                            if (nameController.text.trim().isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Please enter a schedule name'), backgroundColor: Colors.orange),
+                              );
+                              return;
+                            }
+                            if (selectedSubjectId == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Please select a subject'), backgroundColor: Colors.orange),
+                              );
+                              return;
+                            }
+                            if (dateRange == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Please select a date range'), backgroundColor: Colors.orange),
+                              );
+                              return;
+                            }
+
+                            final startDateMillis = DateTime(dateRange!.start.year, dateRange!.start.month, dateRange!.start.day).millisecondsSinceEpoch;
+                            final endDateMillis = DateTime(dateRange!.end.year, dateRange!.end.month, dateRange!.end.day).millisecondsSinceEpoch;
+                            final startTimeStr = startTime.format(context);
+                            final endTimeStr = endTime.format(context);
+
+                            final ss = SpecialSchedule(
+                              name: nameController.text.trim(),
+                              scheduleType: selectedType,
+                              subjectId: selectedSubjectId!,
+                              startDateMillis: startDateMillis,
+                              endDateMillis: endDateMillis,
+                              dailyStartTime: startTimeStr,
+                              dailyEndTime: endTimeStr,
+                            );
+
+                            await attendance.addSpecialSchedule(ss);
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('✅ "${ss.name}" added!'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
