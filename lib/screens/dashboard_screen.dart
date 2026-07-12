@@ -294,6 +294,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(height: 24),
 
+                    // Low Attendance Warnings
+                    if (lowAttendanceSubjects.isNotEmpty) ...[
+                      Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: const BorderSide(color: absentRed, width: 1),
+                        ),
+                        color: absentRed.withOpacity(0.08),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.warning_amber_rounded, color: absentRed, size: 24),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Low Attendance Warnings',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: absentRed,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              ...lowAttendanceSubjects.map((info) {
+                                final classesNeeded = attendance.calculateClassesNeeded(
+                                  info.presentCount,
+                                  info.totalCount,
+                                  targetPercent,
+                                );
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 6.0),
+                                  child: Text(
+                                    '• ${info.subject.name}: currently at ${info.percentage.toInt()}% (target ${targetPercent.toInt()}%). You must attend the next $classesNeeded classes consecutively to recover!',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
                     // Holiday Banner
                     if (isTodayHoliday || isSunday) ...[
                       Card(
@@ -341,39 +394,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ],
 
                     // Today's Schedule Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          "Today's Schedule",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                    if (!isSunday) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            "Today's Schedule",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        Text(
-                          DateFormat('EEEE').format(today),
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
+                          Text(
+                            DateFormat('EEEE').format(today),
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.primary,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                   ],
                 ),
               ),
             ),
 
             // Today's Schedule horizontal list
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 110,
-                child: todaysSlots.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            if (!isSunday)
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 110,
+                  child: todaysSlots.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
                         child: Card(
                           elevation: 0,
                           color: theme.colorScheme.surfaceContainerHighest,

@@ -89,7 +89,8 @@ class DriveService {
 
     if (fileList.files != null && fileList.files!.isNotEmpty) {
       final fileId = fileList.files!.first.id!;
-      await driveApi.files.update(fileToUpload, fileId, uploadMedia: media);
+      final updateFile = drive.File()..name = 'attendx_database_backup.db';
+      await driveApi.files.update(updateFile, fileId, uploadMedia: media);
     } else {
       await driveApi.files.create(fileToUpload, uploadMedia: media);
     }

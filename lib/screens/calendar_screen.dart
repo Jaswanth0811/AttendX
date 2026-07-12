@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../providers/attendance_provider.dart';
+import '../providers/settings_provider.dart';
 import '../models/attendance_record.dart';
 import '../models/subject.dart';
 import '../models/timetable_entry.dart';
@@ -46,54 +47,21 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     _focusedDay = focusedDay;
                   });
                 },
-                calendarStyle: CalendarStyle(
-                  todayDecoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  selectedDecoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    shape: BoxShape.circle,
-                  ),
+                headerStyle: const HeaderStyle(
+                  formatButtonVisible: false,
+                  titleCentered: true,
                 ),
                 calendarBuilders: CalendarBuilders(
                   defaultBuilder: (context, day, focusedDay) {
-                    final dayMillis = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
-                    if (attendance.isHoliday(dayMillis)) {
-                      return Container(
-                        margin: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.orange, width: 1.5),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text('${day.day}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-                      );
-                    }
-                    return null;
+                    return _buildCalendarDayCell(context, day, attendance, false, false);
                   },
                   todayBuilder: (context, day, focusedDay) {
-                    final dayMillis = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
-                    if (attendance.isHoliday(dayMillis)) {
-                      return Container(
-                        margin: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.3),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.orange, width: 2),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text('${day.day}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-                      );
-                    }
-                    return null;
+                    return _buildCalendarDayCell(context, day, attendance, false, true);
+                  },
+                  selectedBuilder: (context, day, focusedDay) {
+                    return _buildCalendarDayCell(context, day, attendance, true, isSameDay(day, DateTime.now()));
                   },
                 ),
-                eventLoader: (day) {
-                  final dayStartMillis = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
-                  return attendance.attendanceByDate[dayStartMillis] ?? [];
-                },
               ),
               const Divider(),
               Expanded(
@@ -111,9 +79,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     
     final dayOfWeek = _selectedDay!.weekday;
     final dayStartMillis = DateTime(_selectedDay!.year, _selectedDay!.month, _selectedDay!.day).millisecondsSinceEpoch;
+    final settings = Provider.of<SettingsProvider>(context, listen: false);
     
     // Get all scheduled slots for this day of the week
-    final slots = attendance.timetableSlots.where((s) => s.dayOfWeek == dayOfWeek).toList();
+    final rawSlots = attendance.timetableSlots.where((s) => s.dayOfWeek == dayOfWeek).toList();
+    final List<TimetableSlot> slots = [];
+    for (var slot in rawSlots) {
+      slots.addAll(slot.expandSlots(settings.periodDurationMinutes));
+    }
     
     // Get all attendance records for this date
     final dateRecords = attendance.attendanceByDate[dayStartMillis] ?? [];
@@ -363,6 +336,69 @@ class _CalendarScreenState extends State<CalendarScreen> {
             },
             child: const Text('Save'),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget? _buildCalendarDayCell(BuildContext context, DateTime day, AttendanceProvider attendance, bool isSelected, bool isToday) {
+    final dayMillis = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
+    final theme = Theme.of(context);
+    final isHoliday = attendance.isHoliday(dayMillis);
+    final isSunday = day.weekday == DateTime.sunday;
+    final records = attendance.attendanceByDate[dayMillis] ?? [];
+
+    Color? dotColor;
+    if (isHoliday || isSunday) {
+      dotColor = Colors.orange;
+    } else if (records.isNotEmpty) {
+      final hasPresent = records.any((r) => r.status == 'PRESENT');
+      final hasAbsent = records.any((r) => r.status == 'ABSENT');
+      if (hasPresent && hasAbsent) {
+        dotColor = Colors.amber;
+      } else if (hasPresent) {
+        dotColor = Colors.green;
+      } else if (hasAbsent) {
+        dotColor = Colors.red;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isSelected 
+            ? theme.colorScheme.primary 
+            : (isToday ? theme.colorScheme.primary.withOpacity(0.15) : Colors.transparent),
+        shape: BoxShape.circle,
+        border: isHoliday 
+          ? Border.all(color: Colors.orange, width: 1.5) 
+          : (isToday ? Border.all(color: theme.colorScheme.primary, width: 1) : null),
+      ),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '${day.day}',
+            style: TextStyle(
+              color: isSelected 
+                  ? theme.colorScheme.onPrimary 
+                  : (isHoliday ? Colors.orange : (isSunday ? Colors.red.shade400 : theme.colorScheme.onSurface)),
+              fontWeight: (isToday || isHoliday || isSelected) ? FontWeight.bold : FontWeight.normal,
+              fontSize: 14,
+            ),
+          ),
+          if (dotColor != null) ...[
+            const SizedBox(height: 2),
+            Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -19,6 +19,7 @@ class SettingsProvider with ChangeNotifier {
 
   bool _isLoaded = false;
   bool _autoSync = false;
+  bool _dailyReminders = true;
 
   SettingsProvider() {
     _loadSettings();
@@ -38,6 +39,7 @@ class SettingsProvider with ChangeNotifier {
   DateTime get semesterStartDate => _semesterStartDate ?? DateTime.now().subtract(const Duration(days: 90));
   DateTime get semesterEndDate => _semesterEndDate ?? DateTime.now().add(const Duration(days: 90));
   bool get autoSync => _autoSync;
+  bool get dailyReminders => _dailyReminders;
 
   Future<void> _loadSettings() async {
     _prefs = await SharedPreferences.getInstance();
@@ -60,6 +62,7 @@ class SettingsProvider with ChangeNotifier {
     _semesterEndDate = semEndMillis != null ? DateTime.fromMillisecondsSinceEpoch(semEndMillis) : DateTime.now().add(const Duration(days: 90));
 
     _autoSync = _prefs?.getBool('auto_sync') ?? false;
+    _dailyReminders = _prefs?.getBool('daily_reminders') ?? true;
 
     _isLoaded = true;
     notifyListeners();
@@ -127,6 +130,12 @@ class SettingsProvider with ChangeNotifier {
   Future<void> setAutoSync(bool val) async {
     _autoSync = val;
     await _prefs?.setBool('auto_sync', val);
+    notifyListeners();
+  }
+
+  Future<void> setDailyReminders(bool val) async {
+    _dailyReminders = val;
+    await _prefs?.setBool('daily_reminders', val);
     notifyListeners();
   }
 }

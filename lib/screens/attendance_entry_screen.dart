@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/attendance_provider.dart';
+import '../providers/settings_provider.dart';
 import '../models/subject.dart';
 import '../models/timetable_entry.dart';
 import '../models/attendance_record.dart';
@@ -25,12 +26,17 @@ class _AttendanceEntryScreenState extends State<AttendanceEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final attendance = Provider.of<AttendanceProvider>(context);
+    final settings = Provider.of<SettingsProvider>(context);
     final theme = Theme.of(context);
 
     final date = DateTime.fromMillisecondsSinceEpoch(widget.dateMillis);
     final dayOfWeek = date.weekday;
 
-    final slots = attendance.timetableSlots.where((s) => s.dayOfWeek == dayOfWeek).toList();
+    final rawSlots = attendance.timetableSlots.where((s) => s.dayOfWeek == dayOfWeek).toList();
+    final List<TimetableSlot> slots = [];
+    for (var slot in rawSlots) {
+      slots.addAll(slot.expandSlots(settings.periodDurationMinutes));
+    }
     slots.sort((a, b) => a.periodNumber.compareTo(b.periodNumber));
 
     final dateRecords = attendance.attendanceByDate[widget.dateMillis] ?? [];

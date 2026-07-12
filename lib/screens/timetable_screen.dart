@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../providers/attendance_provider.dart';
 import '../models/timetable_entry.dart';
 import '../models/subject.dart';
@@ -41,6 +44,18 @@ class _TimetableScreenState extends State<TimetableScreen> {
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: () => _shareTimetable(context, attendance),
+            tooltip: 'Share Timetable',
+          ),
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () => _scanTimetable(context, attendance),
+            tooltip: 'Scan Timetable',
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showEditorSheet(context, null),
@@ -266,6 +281,168 @@ class _TimetableScreenState extends State<TimetableScreen> {
       },
     );
   }
+
+  void _shareTimetable(BuildContext context, AttendanceProvider provider) {
+    final subjects = provider.subjects;
+    final slots = provider.timetableSlots;
+
+    final List<Map<String, dynamic>> subjectMaps = subjects.map((sub) => {
+      'name': sub.name,
+      'code': sub.code,
+      'color': sub.colorHex,
+    }).toList();
+
+    final List<Map<String, dynamic>> slotMaps = slots.map((slot) {
+      final subIdx = subjects.indexWhere((sub) => sub.id == slot.subjectId);
+      return {
+        'day': slot.dayOfWeek,
+        'p': slot.periodNumber,
+        'start': slot.startTime,
+        'end': slot.endTime,
+        'subIdx': subIdx,
+      };
+    }).toList();
+
+    final payload = jsonEncode({
+      'version': 1,
+      'subjects': subjectMaps,
+      'slots': slotMaps,
+    });
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Share Timetable'),
+        content: SizedBox(
+          width: 280,
+          height: 280,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              QrImageView(
+                data: payload,
+                version: QrVersions.auto,
+                size: 200.0,
+                backgroundColor: Colors.white,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Let your classmate scan this QR code inside their AttendX app to import this timetable instantly.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _scanTimetable(BuildContext context, AttendanceProvider provider) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => QRScannerScreen(onScan: (data) async {
+          await _importTimetableData(context, provider, data);
+        }),
+      ),
+    );
+  }
+
+  Future<void> _importTimetableData(BuildContext context, AttendanceProvider provider, String data) async {
+    try {
+      final decoded = jsonDecode(data);
+      if (decoded['version'] != 1 || decoded['subjects'] == null || decoded['slots'] == null) {
+        throw Exception('Invalid timetable format');
+      }
+
+      final List<dynamic> subjectsData = decoded['subjects'];
+      final List<dynamic> slotsData = decoded['slots'];
+      final Map<int, int?> subjectIdMapping = {};
+
+      for (int i = 0; i < subjectsData.length; i++) {
+        final subMap = subjectsData[i];
+        final name = subMap['name'].toString();
+        final code = subMap['code'].toString();
+        final color = subMap['color'].toString();
+
+        Subject? existingSubject;
+        try {
+          existingSubject = provider.subjects.firstWhere((s) => s.code.toLowerCase() == code.toLowerCase() || s.name.toLowerCase() == name.toLowerCase());
+        } catch (_) {}
+
+        if (existingSubject != null) {
+          subjectIdMapping[i] = existingSubject.id;
+        } else {
+          final newSub = Subject(
+            name: name,
+            code: code,
+            colorHex: color,
+            facultyName: '',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          );
+          await provider.addSubject(newSub);
+          
+          final updatedProvider = Provider.of<AttendanceProvider>(context, listen: false);
+          final createdSub = updatedProvider.subjects.firstWhere((s) => s.code.toLowerCase() == code.toLowerCase());
+          subjectIdMapping[i] = createdSub.id;
+        }
+      }
+
+      await provider.clearTimetable();
+
+      for (var slotMap in slotsData) {
+        final day = slotMap['day'] as int;
+        final period = slotMap['p'] as int;
+        final start = slotMap['start'].toString();
+        final end = slotMap['end'].toString();
+        final subIdx = slotMap['subIdx'] as int;
+
+        int? mappedSubId;
+        if (subIdx != -1 && subjectIdMapping.containsKey(subIdx)) {
+          mappedSubId = subjectIdMapping[subIdx];
+        }
+
+        final slot = TimetableSlot(
+          dayOfWeek: day,
+          periodNumber: period,
+          startTime: start,
+          endTime: end,
+          subjectId: mappedSubId,
+        );
+        await provider.saveTimetableSlot(slot);
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Timetable imported successfully! 🎉')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Import Failed'),
+            content: Text('Could not import timetable. Error: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Dismiss'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
 }
 
 class TimetableEditorSheet extends StatefulWidget {
@@ -482,6 +659,49 @@ class _TimetableEditorSheetState extends State<TimetableEditorSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class QRScannerScreen extends StatefulWidget {
+  final Function(String) onScan;
+
+  const QRScannerScreen({super.key, required this.onScan});
+
+  @override
+  State<QRScannerScreen> createState() => _QRScannerScreenState();
+}
+
+class _QRScannerScreenState extends State<QRScannerScreen> {
+  final MobileScannerController controller = MobileScannerController();
+  bool _processed = false;
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Scan Timetable QR'),
+      ),
+      body: MobileScanner(
+        controller: controller,
+        onDetect: (capture) {
+          final List<Barcode> barcodes = capture.barcodes;
+          if (barcodes.isNotEmpty && !_processed) {
+            final rawValue = barcodes.first.rawValue;
+            if (rawValue != null) {
+              _processed = true;
+              widget.onScan(rawValue);
+              Navigator.pop(context);
+            }
+          }
+        },
       ),
     );
   }

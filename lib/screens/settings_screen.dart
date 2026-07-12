@@ -15,6 +15,7 @@ import '../models/subject.dart';
 import '../models/holiday.dart';
 import 'attendance_history_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import '../services/notification_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -258,6 +259,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       }
                     } else {
                       await settings.setAutoSync(false);
+                    }
+                  },
+                ),
+                const Divider(height: 1),
+                SwitchListTile.adaptive(
+                  secondary: const Icon(Icons.notifications_active, color: Colors.purple),
+                  title: const Text('Daily Attendance Reminders'),
+                  subtitle: const Text('Remind me at 5:00 PM to mark daily attendance'),
+                  value: settings.dailyReminders,
+                  onChanged: (val) async {
+                    await settings.setDailyReminders(val);
+                    await NotificationService().scheduleDailySetupReminder(val);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(val ? 'Daily reminders enabled!' : 'Daily reminders disabled!')),
+                      );
                     }
                   },
                 ),

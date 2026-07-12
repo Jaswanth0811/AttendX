@@ -4,6 +4,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../models/timetable_entry.dart';
 import '../models/subject.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -55,13 +56,19 @@ class NotificationService {
     if (slots.isEmpty) return;
 
     final now = DateTime.now();
+    final prefs = await SharedPreferences.getInstance();
+    final periodDuration = prefs.getInt('period_duration_minutes') ?? 60;
     
     // We only schedule for today and tomorrow for simplicity to avoid hitting OS limits
     for (int dayOffset = 0; dayOffset <= 1; dayOffset++) {
       final targetDate = now.add(Duration(days: dayOffset));
       final targetDayOfWeek = targetDate.weekday;
 
-      final daySlots = slots.where((s) => s.dayOfWeek == targetDayOfWeek).toList();
+      final rawDaySlots = slots.where((s) => s.dayOfWeek == targetDayOfWeek).toList();
+      final List<TimetableSlot> daySlots = [];
+      for (var slot in rawDaySlots) {
+        daySlots.addAll(slot.expandSlots(periodDuration));
+      }
 
       for (var slot in daySlots) {
         final subject = subjects.firstWhere((s) => s.id == slot.subjectId, orElse: () => Subject(id: -1, name: 'Class', code: 'UNK', facultyName: '', colorHex: '#000000', createdAt: 0));
@@ -152,5 +159,37 @@ class NotificationService {
         );
       }
     }
+  }
+
+  Future<void> scheduleDailySetupReminder(bool enabled) async {
+    try {
+      await _notificationsPlugin.cancel(id: 9999);
+    } catch (_) {}
+
+    if (!enabled) return;
+
+    final now = DateTime.now();
+    var scheduledTime = DateTime(now.year, now.month, now.day, 17, 0);
+
+    if (scheduledTime.isBefore(now)) {
+      scheduledTime = scheduledTime.add(const Duration(days: 1));
+    }
+
+    await _notificationsPlugin.zonedSchedule(
+      id: 9999,
+      title: 'AttendX Reminder',
+      body: 'Did you attend classes today? Tap to setup and mark your attendance.',
+      scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'daily_reminder_channel',
+          'Daily Reminders',
+          channelDescription: 'Notifications to remind you to log daily attendance',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    );
   }
 }
