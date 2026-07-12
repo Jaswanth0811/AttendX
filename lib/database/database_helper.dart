@@ -5,6 +5,7 @@ import '../models/subject.dart';
 import '../models/timetable_entry.dart';
 import '../models/attendance_record.dart';
 import '../models/holiday.dart';
+import '../models/special_timetable.dart';
 import 'dart:io';
 
 class DatabaseHelper {
@@ -24,7 +25,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'attendx_database');
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -97,6 +98,16 @@ class DatabaseHelper {
       )
     ''');
     await db.execute('CREATE UNIQUE INDEX index_holidays_date ON holidays(date)');
+
+    await db.execute('''
+      CREATE TABLE special_timetables (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dateMillis INTEGER NOT NULL,
+        targetDayOfWeek INTEGER NOT NULL,
+        notes TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE UNIQUE INDEX index_special_timetables_date ON special_timetables(dateMillis)');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -110,6 +121,17 @@ class DatabaseHelper {
         )
       ''');
       await db.execute('CREATE UNIQUE INDEX index_holidays_date ON holidays(date)');
+    }
+    if (oldVersion < 3) {
+      await db.execute('''
+        CREATE TABLE special_timetables (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          dateMillis INTEGER NOT NULL,
+          targetDayOfWeek INTEGER NOT NULL,
+          notes TEXT NOT NULL
+        )
+      ''');
+      await db.execute('CREATE UNIQUE INDEX index_special_timetables_date ON special_timetables(dateMillis)');
     }
   }
 
@@ -242,6 +264,23 @@ class DatabaseHelper {
     final db = await database;
     final result = await db.query('holidays', where: 'date = ?', whereArgs: [dateMillis], limit: 1);
     return result.isNotEmpty;
+  }
+
+  // --- Special Timetables ---
+  Future<int> insertSpecialTimetable(SpecialTimetable st) async {
+    final db = await database;
+    return await db.insert('special_timetables', st.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<SpecialTimetable>> getSpecialTimetables() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('special_timetables', orderBy: 'dateMillis ASC');
+    return List.generate(maps.length, (i) => SpecialTimetable.fromMap(maps[i]));
+  }
+
+  Future<void> deleteSpecialTimetable(int id) async {
+    final db = await database;
+    await db.delete('special_timetables', where: 'id = ?', whereArgs: [id]);
   }
 
   // --- Backup support ---

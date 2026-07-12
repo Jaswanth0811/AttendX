@@ -3,6 +3,8 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import '../models/timetable_entry.dart';
 import '../models/subject.dart';
+import '../models/special_timetable.dart';
+import '../database/database_helper.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -59,10 +61,31 @@ class NotificationService {
     final prefs = await SharedPreferences.getInstance();
     final periodDuration = prefs.getInt('period_duration_minutes') ?? 60;
     
+    // Load special overrides from DB
+    final db = DatabaseHelper();
+    final specialOverrides = await db.getSpecialTimetables();
+    
     // We only schedule for today and tomorrow for simplicity to avoid hitting OS limits
     for (int dayOffset = 0; dayOffset <= 1; dayOffset++) {
       final targetDate = now.add(Duration(days: dayOffset));
-      final targetDayOfWeek = targetDate.weekday;
+      final midnightDateMillis = DateTime(targetDate.year, targetDate.month, targetDate.day).millisecondsSinceEpoch;
+      
+      // Check if we have a special override for this date
+      final special = specialOverrides.firstWhere(
+        (st) => st.dateMillis == midnightDateMillis,
+        orElse: () => SpecialTimetable(dateMillis: 0, targetDayOfWeek: -1),
+      );
+      
+      final int targetDayOfWeek;
+      if (special.targetDayOfWeek != -1) {
+        if (special.targetDayOfWeek == 0) {
+          // Holiday, no classes today!
+          continue;
+        }
+        targetDayOfWeek = special.targetDayOfWeek;
+      } else {
+        targetDayOfWeek = targetDate.weekday;
+      }
 
       final rawDaySlots = slots.where((s) => s.dayOfWeek == targetDayOfWeek).toList();
       final List<TimetableSlot> daySlots = [];

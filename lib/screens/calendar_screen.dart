@@ -81,8 +81,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final dayStartMillis = DateTime(_selectedDay!.year, _selectedDay!.month, _selectedDay!.day).millisecondsSinceEpoch;
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     
-    // Get all scheduled slots for this day of the week
-    final rawSlots = attendance.timetableSlots.where((s) => s.dayOfWeek == dayOfWeek).toList();
+    // Get all scheduled slots for this day of the week taking special overrides into account
+    final rawSlots = attendance.getSlotsForDate(dayStartMillis);
     final List<TimetableSlot> slots = [];
     for (var slot in rawSlots) {
       slots.addAll(slot.expandSlots(settings.periodDurationMinutes));
@@ -344,8 +344,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Widget? _buildCalendarDayCell(BuildContext context, DateTime day, AttendanceProvider attendance, bool isSelected, bool isToday) {
     final dayMillis = DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
     final theme = Theme.of(context);
-    final isHoliday = attendance.isHoliday(dayMillis);
-    final isSunday = day.weekday == DateTime.sunday;
+    final special = attendance.getSpecialTimetableForDate(dayMillis);
+    final isHoliday = attendance.isHoliday(dayMillis) || (special?.targetDayOfWeek == 0);
+    final isSunday = (day.weekday == DateTime.sunday && special == null) || (special?.targetDayOfWeek == 7);
     final records = attendance.attendanceByDate[dayMillis] ?? [];
 
     Color? dotColor;

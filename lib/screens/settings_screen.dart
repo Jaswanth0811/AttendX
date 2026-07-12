@@ -13,6 +13,7 @@ import '../database/database_helper.dart';
 import '../providers/attendance_provider.dart';
 import '../models/subject.dart';
 import '../models/holiday.dart';
+import '../models/special_timetable.dart';
 import 'attendance_history_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/notification_service.dart';
@@ -361,6 +362,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('Add Holiday Range'),
                   subtitle: const Text('e.g., Semester break, festival week'),
                   onTap: () => _showAddHolidayRangeDialog(context, attendance),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.swap_calls, color: Colors.orange),
+                  title: const Text('Special Timetables / Day-Swaps'),
+                  subtitle: Text('${attendance.specialTimetables.length} overrides configured'),
+                  onTap: () => _showSpecialTimetableManagementSheet(context, attendance),
                 ),
               ],
             ),
@@ -1006,6 +1014,201 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  void _showSpecialTimetableManagementSheet(BuildContext context, AttendanceProvider attendance) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final overrides = attendance.specialTimetables;
+            final days = ['Holiday / No Classes', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+            
+            return DraggableScrollableSheet(
+              initialChildSize: 0.6,
+              minChildSize: 0.3,
+              maxChildSize: 0.9,
+              expand: false,
+              builder: (context, scrollController) {
+                return Column(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.swap_calls, color: Colors.orange),
+                              SizedBox(width: 8),
+                              Text('Special Timetables', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              await _showAddSpecialTimetableDialog(context, attendance);
+                              setModalState(() {});
+                            },
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(),
+                    Expanded(
+                      child: overrides.isEmpty
+                          ? const Center(
+                              child: Text('No special timetables configured.', style: TextStyle(color: Colors.grey)),
+                            )
+                          : ListView.builder(
+                              controller: scrollController,
+                              itemCount: overrides.length,
+                              itemBuilder: (context, index) {
+                                final st = overrides[index];
+                                final date = DateTime.fromMillisecondsSinceEpoch(st.dateMillis);
+                                final dayText = st.targetDayOfWeek == 0 ? 'Holiday / No Classes' : 'Follows ${days[st.targetDayOfWeek]} Schedule';
+                                
+                                return ListTile(
+                                  leading: const Icon(Icons.swap_horiz, color: Colors.orange),
+                                  title: Text(DateFormat('EEEE, MMM d, yyyy').format(date), style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text(st.notes.isNotEmpty ? '$dayText\nNote: ${st.notes}' : dayText),
+                                  isThreeLine: st.notes.isNotEmpty,
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                    onPressed: () async {
+                                      await attendance.deleteSpecialTimetable(st.id!);
+                                      setModalState(() {});
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showAddSpecialTimetableDialog(BuildContext context, AttendanceProvider attendance) async {
+    final notesController = TextEditingController();
+    DateTime? selectedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+
+    if (selectedDate == null) return;
+
+    int targetDay = 1; // Default Monday
+    final days = [
+      {'val': 0, 'label': 'Holiday / No Classes'},
+      {'val': 1, 'label': 'Monday'},
+      {'val': 2, 'label': 'Tuesday'},
+      {'val': 3, 'label': 'Wednesday'},
+      {'val': 4, 'label': 'Thursday'},
+      {'val': 5, 'label': 'Friday'},
+      {'val': 6, 'label': 'Saturday'},
+      {'val': 7, 'label': 'Sunday'},
+    ];
+
+    if (context.mounted) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text('Add Day-Swap Override'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'For Date: ${DateFormat('EEE, MMM d, yyyy').format(selectedDate!)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Select schedule to run on this day:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<int>(
+                    value: targetDay,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    items: days.map((d) => DropdownMenuItem<int>(
+                      value: d['val'] as int,
+                      child: Text(d['label'] as String),
+                    )).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() {
+                          targetDay = val;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: notesController,
+                    decoration: InputDecoration(
+                      labelText: 'Note (Optional)',
+                      hintText: 'e.g., Run Friday timetable',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final midnightDate = DateTime(selectedDate!.year, selectedDate!.month, selectedDate!.day).millisecondsSinceEpoch;
+                    final override = SpecialTimetable(
+                      dateMillis: midnightDate,
+                      targetDayOfWeek: targetDay,
+                      notes: notesController.text.trim(),
+                    );
+                    await attendance.addSpecialTimetable(override);
+                    if (ctx.mounted) {
+                      Navigator.pop(ctx);
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    }
   }
 }
 

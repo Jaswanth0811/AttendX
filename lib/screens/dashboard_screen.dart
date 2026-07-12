@@ -118,12 +118,14 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
 
     final today = DateTime.now();
-    final currentDayOfWeek = today.weekday; // 1 = Monday, 7 = Sunday
+    final todayStartMillis = DateTime(today.year, today.month, today.day).millisecondsSinceEpoch;
 
-    // Filter timetable for today
-    final todaysSlots = attendance.timetableSlots
-        .where((slot) => slot.dayOfWeek == currentDayOfWeek)
-        .toList();
+    // Filter timetable for today taking special overrides into account
+    final rawTodaysSlots = attendance.getSlotsForDate(todayStartMillis);
+    final List<TimetableSlot> todaysSlots = [];
+    for (var slot in rawTodaysSlots) {
+      todaysSlots.addAll(slot.expandSlots(settings.periodDurationMinutes));
+    }
     todaysSlots.sort((a, b) => a.periodNumber.compareTo(b.periodNumber));
 
     final overallPercent = attendance.getOverallAttendancePercentage();
@@ -152,10 +154,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         .where((info) => info.totalCount > 0 && info.percentage < targetPercent)
         .toList();
 
-    final now = DateTime.now();
-    final isSunday = now.weekday == DateTime.sunday;
-    final todayStartMillis = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
-    final isTodayHoliday = attendance.isHoliday(todayStartMillis);
+    final specialToday = attendance.getSpecialTimetableForDate(todayStartMillis);
+    final isTodayHoliday = attendance.isHoliday(todayStartMillis) || (specialToday?.targetDayOfWeek == 0);
+    final isSunday = (today.weekday == DateTime.sunday && specialToday == null) || (specialToday?.targetDayOfWeek == 7);
     final todayHoliday = attendance.getHolidayForDate(todayStartMillis);
 
     return Scaffold(

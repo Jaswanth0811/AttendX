@@ -7,6 +7,7 @@ import '../models/subject.dart';
 import '../models/timetable_entry.dart';
 import '../models/attendance_record.dart';
 import '../models/holiday.dart';
+import '../models/special_timetable.dart';
 import '../database/database_helper.dart';
 import '../services/notification_service.dart';
 import '../services/drive_service.dart';
@@ -24,6 +25,7 @@ class AttendanceProvider with ChangeNotifier {
   List<int> _excludedSubjectIds = [];
   List<Holiday> _holidays = [];
   Set<int> _holidayDates = {};
+  List<SpecialTimetable> _specialTimetables = [];
   bool _autoSync = false;
   
   bool _isLoading = true;
@@ -36,6 +38,7 @@ class AttendanceProvider with ChangeNotifier {
   List<int> get excludedSubjectIds => _excludedSubjectIds;
   List<Holiday> get holidays => _holidays;
   Set<int> get holidayDates => _holidayDates;
+  List<SpecialTimetable> get specialTimetables => _specialTimetables;
   bool get isLoading => _isLoading;
 
   bool isHoliday(int dateMillis) => _holidayDates.contains(dateMillis);
@@ -80,9 +83,10 @@ class AttendanceProvider with ChangeNotifier {
     
     _calculateOverallPercentage();
     
-    // Load holidays
+    // Load holidays and special timetables
     _holidays = await _db.getHolidays();
     _holidayDates = _holidays.map((h) => h.date).toSet();
+    _specialTimetables = await _db.getSpecialTimetables();
     
     // Schedule notifications for upcoming classes
     await NotificationService().scheduleClassNotifications(_timetableSlots, _subjects);
@@ -360,5 +364,43 @@ class AttendanceProvider with ChangeNotifier {
     } else {
       _overallPercentage = (present / totalClasses) * 100;
     }
+  }
+
+  // --- Special Timetables ---
+  Future<void> addSpecialTimetable(SpecialTimetable st) async {
+    await _db.insertSpecialTimetable(st);
+    _specialTimetables = await _db.getSpecialTimetables();
+    notifyListeners();
+  }
+
+  Future<void> deleteSpecialTimetable(int id) async {
+    await _db.deleteSpecialTimetable(id);
+    _specialTimetables = await _db.getSpecialTimetables();
+    notifyListeners();
+  }
+
+  SpecialTimetable? getSpecialTimetableForDate(int dateMillis) {
+    try {
+      return _specialTimetables.firstWhere((st) => st.dateMillis == dateMillis);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  List<TimetableSlot> getSlotsForDate(int dateMillis) {
+    final date = DateTime.fromMillisecondsSinceEpoch(dateMillis);
+    final special = getSpecialTimetableForDate(dateMillis);
+    
+    final int dayOfWeek;
+    if (special != null) {
+      if (special.targetDayOfWeek == 0) {
+        return []; // Special holiday override, no classes scheduled
+      }
+      dayOfWeek = special.targetDayOfWeek;
+    } else {
+      dayOfWeek = date.weekday;
+    }
+    
+    return _timetableSlots.where((s) => s.dayOfWeek == dayOfWeek).toList();
   }
 }

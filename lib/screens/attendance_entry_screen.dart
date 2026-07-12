@@ -32,7 +32,7 @@ class _AttendanceEntryScreenState extends State<AttendanceEntryScreen> {
     final date = DateTime.fromMillisecondsSinceEpoch(widget.dateMillis);
     final dayOfWeek = date.weekday;
 
-    final rawSlots = attendance.timetableSlots.where((s) => s.dayOfWeek == dayOfWeek).toList();
+    final rawSlots = attendance.getSlotsForDate(widget.dateMillis);
     final List<TimetableSlot> slots = [];
     for (var slot in rawSlots) {
       slots.addAll(slot.expandSlots(settings.periodDurationMinutes));
