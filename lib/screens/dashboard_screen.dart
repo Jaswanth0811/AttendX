@@ -23,7 +23,7 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
   String _sarcasticQuote = 'Enjoy your day off!';
 
   String _getGreeting() {
@@ -36,7 +36,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _fetchSarcasticQuote();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _fetchSarcasticQuote();
+    }
   }
 
   Future<void> _fetchSarcasticQuote() async {
@@ -64,7 +78,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
 
     try {
-      final response = await http.get(Uri.parse('https://raw.githubusercontent.com/Jaswanth0811/AttendX/main/sarcastic_holiday_quotes.json'))
+      final url = 'https://raw.githubusercontent.com/Jaswanth0811/AttendX/main/sarcastic_holiday_quotes.json?t=${DateTime.now().millisecondsSinceEpoch}';
+      final response = await http.get(Uri.parse(url))
           .timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         final List<dynamic> quotes = json.decode(response.body);
