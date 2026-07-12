@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'dart:math';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../providers/attendance_provider.dart';
 import '../providers/settings_provider.dart';
 import '../models/subject.dart';
@@ -13,14 +16,78 @@ import 'analytics_screen.dart';
 import 'attendance_entry_screen.dart';
 import '../widgets/attendance_wizard_sheet.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  String _sarcasticQuote = 'Enjoy your day off!';
 
   String _getGreeting() {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Morning';
     if (hour < 17) return 'Afternoon';
     return 'Evening';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSarcasticQuote();
+  }
+
+  Future<void> _fetchSarcasticQuote() async {
+    final fallbacks = [
+      "Today is a holiday. Yes, that means you can finally start pretending to study.",
+      "Holiday alert! Go touch some grass. College isn't going anywhere, unfortunately.",
+      "It is a holiday. Your bed is calling, and unlike your professor, it actually cares about you.",
+      "Today is a holiday! Time to do absolutely nothing and then complain about having no time.",
+      "Happy holiday! Please try not to think about the 5 assignments you're ignoring today.",
+      "A holiday! Feel free to check your attendance percentage. Spoilers: it still needs help.",
+      "Enjoy the holiday! Don't worry, the pressure of final exams will still be here tomorrow.",
+      "It's a holiday! Time to tell everyone you'll study, knowing full well you'll play games all day.",
+      "Holiday time. Try to remember what a normal sleep schedule feels like.",
+      "A holiday today. Go ahead, close your textbook. You weren't reading it anyway.",
+      "Enjoy the day off! Your college profile is currently weeping, but hey, sleep is nice.",
+      "It is a holiday. Go do something productive. Just kidding, go watch Netflix.",
+      "Holiday! A perfect opportunity to pretend your pending list of tasks doesn't exist.",
+      "Yay, a holiday! Time to ignore your group project members for another 24 hours.",
+      "Holiday mode activated. Let's make zero progress today and feel proud of it.",
+      "Enjoy the holiday. The college gate is closed, but your impending deadlines are wide open.",
+      "It's Sunday! Time to rest, because sitting in class doing nothing is hard work.",
+      "Today is a holiday. Finally, a day when bunking is officially legal.",
+      "No classes today! Time to sleep in and pretend you're a functioning member of society.",
+      "Holiday! Please use this time to reflect on why your attendance is below 75%."
+    ];
+
+    try {
+      final response = await http.get(Uri.parse('https://raw.githubusercontent.com/Jaswanth0811/AttendX/main/sarcastic_holiday_quotes.json'))
+          .timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        final List<dynamic> quotes = json.decode(response.body);
+        if (quotes.isNotEmpty) {
+          final random = Random();
+          if (mounted) {
+            setState(() {
+              _sarcasticQuote = quotes[random.nextInt(quotes.length)].toString();
+            });
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Failed to fetch sarcastic quotes: $e");
+    }
+
+    if (mounted) {
+      final random = Random();
+      setState(() {
+        _sarcasticQuote = fallbacks[random.nextInt(fallbacks.length)];
+      });
+    }
   }
 
   @override
@@ -71,12 +138,13 @@ class DashboardScreen extends StatelessWidget {
         .toList();
 
     final now = DateTime.now();
+    final isSunday = now.weekday == DateTime.sunday;
     final todayStartMillis = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
     final isTodayHoliday = attendance.isHoliday(todayStartMillis);
     final todayHoliday = attendance.getHolidayForDate(todayStartMillis);
 
     return Scaffold(
-      floatingActionButton: isTodayHoliday
+      floatingActionButton: (isTodayHoliday || isSunday)
           ? null
           : FloatingActionButton.extended(
               onPressed: () {
@@ -227,7 +295,7 @@ class DashboardScreen extends StatelessWidget {
                     const SizedBox(height: 24),
 
                     // Holiday Banner
-                    if (isTodayHoliday) ...[
+                    if (isTodayHoliday || isSunday) ...[
                       Card(
                         elevation: 0,
                         shape: RoundedRectangleBorder(
@@ -239,26 +307,27 @@ class DashboardScreen extends StatelessWidget {
                           padding: const EdgeInsets.all(20.0),
                           child: Row(
                             children: [
-                              const Text('\ud83c\udf89', style: TextStyle(fontSize: 36)),
+                              const Text('🎉', style: TextStyle(fontSize: 36)),
                               const SizedBox(width: 16),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      'Today is a Holiday!',
-                                      style: TextStyle(
+                                    Text(
+                                      isSunday ? "It's Sunday!" : "Today is a Holiday: ${todayHoliday?.name ?? ''}",
+                                      style: const TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
                                         color: Colors.orange,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: 6),
                                     Text(
-                                      todayHoliday?.name ?? 'Enjoy your day off!',
+                                      _sarcasticQuote,
                                       style: TextStyle(
                                         fontSize: 14,
                                         color: theme.colorScheme.onSurfaceVariant,
+                                        fontStyle: FontStyle.italic,
                                       ),
                                     ),
                                   ],

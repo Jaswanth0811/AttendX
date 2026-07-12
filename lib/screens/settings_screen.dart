@@ -14,6 +14,7 @@ import '../providers/attendance_provider.dart';
 import '../models/subject.dart';
 import '../models/holiday.dart';
 import 'attendance_history_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -24,11 +25,24 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   GoogleSignInAccount? _googleUser;
+  String _appVersion = '1.0.8';
 
   @override
   void initState() {
     super.initState();
     _checkGoogleSignInStatus();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          _appVersion = packageInfo.version;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _checkGoogleSignInStatus() async {
@@ -356,10 +370,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 const Divider(height: 1),
-                ListTile(
+                 ListTile(
                   leading: const Icon(Icons.info_outline),
                   title: const Text('About AttendX'),
-                  subtitle: const Text('Version 1.0.4'),
+                  subtitle: Text('Version $_appVersion'),
                   onTap: () => _showAboutDialog(context),
                 ),
               ],
@@ -559,22 +573,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('About AttendX'),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               'AttendX',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
-            SizedBox(height: 8),
-            Text('Version: 1.0.4'),
-            SizedBox(height: 16),
-            Text(
+            const SizedBox(height: 8),
+            Text('Version: $_appVersion'),
+            const SizedBox(height: 16),
+            const Text(
               'AttendX is an offline-first college attendance manager built to keep your schedules tracked and help you calculate bunk days safely.',
             ),
-            SizedBox(height: 16),
-            Text(
+            const SizedBox(height: 16),
+            const Text(
               'Developed by Jaswanth0811',
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
