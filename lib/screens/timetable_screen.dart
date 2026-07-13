@@ -7,6 +7,13 @@ import '../providers/attendance_provider.dart';
 import '../models/timetable_entry.dart';
 import '../models/subject.dart';
 import '../utils/color_utils.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import '../providers/settings_provider.dart';
+import '../services/timetable_parser_service.dart';
+import '../services/openrouter_service.dart';
+import 'timetable_import_preview_screen.dart';
 
 class TimetableScreen extends StatefulWidget {
   const TimetableScreen({super.key});
@@ -67,6 +74,25 @@ class _TimetableScreenState extends State<TimetableScreen> {
       ),
       body: Column(
         children: [
+          // Import Timetable button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _showImportOptions(context),
+                icon: const Icon(Icons.cloud_upload_outlined),
+                label: const Text('Import Timetable', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ),
+
           // Day Selection Tabs
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -441,6 +467,328 @@ class _TimetableScreenState extends State<TimetableScreen> {
           ),
         );
       }
+    }
+  }
+
+  final TimetableParserService _parserService = TimetableParserService();
+  final OpenRouterService _openRouterService = OpenRouterService();
+
+  Future<void> _checkOpenRouterKey(BuildContext context, VoidCallback onKeyReady) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = prefs.getString('openrouter_api_key') ?? '';
+    if (key.isNotEmpty) {
+      onKeyReady();
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    final keyController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('OpenRouter API Key Required', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'To extract your timetable using AI, AttendX needs a free API Key from OpenRouter.',
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'How to get a Free API Key:',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const Text('1. Go to openrouter.ai/keys\\n2. Create a Free API Key\\n3. Copy and paste it below.', style: TextStyle(fontSize: 12)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: keyController,
+              decoration: const InputDecoration(
+                labelText: 'Paste API Key here',
+                border: OutlineInputBorder(),
+                hintText: 'sk-or-v1-...',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newKey = keyController.text.trim();
+              if (newKey.isNotEmpty) {
+                await prefs.setString('openrouter_api_key', newKey);
+                if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                onKeyReady();
+              }
+            },
+            child: const Text('Save & Continue'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showImportOptions(BuildContext context) {
+    _checkOpenRouterKey(context, () {
+      showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        builder: (sheetCtx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.deepPurple[50],
+                    child: const Icon(Icons.image_outlined, color: Colors.deepPurple),
+                  ),
+                  title: const Text('Import from Image', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Capture photo or upload from Gallery'),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _importFromImage(context);
+                  },
+                ),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.red[50],
+                    child: Icon(Icons.picture_as_pdf_outlined, color: Colors.red[700]),
+                  ),
+                  title: const Text('Import from PDF', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Select a scanned or digital PDF file'),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _importFromPdf(context);
+                  },
+                ),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.green[50],
+                    child: Icon(Icons.table_chart_outlined, color: Colors.green[700]),
+                  ),
+                  title: const Text('Import from Excel', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Select a .xlsx or .xls file'),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _importFromExcel(context);
+                  },
+                ),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.blue[50],
+                    child: Icon(Icons.description_outlined, color: Colors.blue[700]),
+                  ),
+                  title: const Text('Import from CSV', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Select a standard CSV file'),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _importFromCsv(context);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
+  }
+
+  Future<void> _processImport({
+    required BuildContext context,
+    required String fileType,
+    required bool isVision,
+    required Future<dynamic> Function() extractor,
+  }) async {
+    String status = "Extracting layout & processing $fileType...";
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            content: Row(
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Text(
+                    status,
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    try {
+      final extractedData = await extractor();
+      if (extractedData == null || (extractedData is String && extractedData.isEmpty) || (extractedData is List && extractedData.isEmpty)) {
+        if (context.mounted) Navigator.pop(context);
+        return;
+      }
+
+      final settings = Provider.of<SettingsProvider>(context, listen: false);
+      List<Map<String, dynamic>> result;
+
+      if (isVision) {
+        // Send base64 image strings directly to AI model
+        final List<String> images = extractedData is String ? [extractedData] : List<String>.from(extractedData);
+        result = await _openRouterService.parseTimetableWithVision(
+          base64Images: images,
+          collegeStartMins: settings.collegeStartTimeMinutes,
+          periodDuration: settings.periodDurationMinutes,
+          lunchStartMins: settings.lunchStartTimeMinutes,
+          lunchEndMins: settings.lunchEndTimeMinutes,
+        );
+      } else {
+        // Excel and CSV (text-based extraction)
+        result = await _openRouterService.parseTimetable(
+          rawText: extractedData as String,
+          fileType: fileType,
+          collegeStartMins: settings.collegeStartTimeMinutes,
+          periodDuration: settings.periodDurationMinutes,
+          lunchStartMins: settings.lunchStartTimeMinutes,
+          lunchEndMins: settings.lunchEndTimeMinutes,
+        );
+      }
+
+      if (context.mounted) {
+        Navigator.pop(context); // Dismiss loading dialog
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => TimetableImportPreviewScreen(initialSlots: result),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Dismiss loading dialog
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('AI Import Failed'),
+            content: Text('Could not extract timetable. Error: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _importFromImage(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Import from Image', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Capture a photo of your timetable or upload an existing image from Gallery.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              _processImport(
+                context: context,
+                fileType: "Image (Camera)",
+                isVision: true,
+                extractor: () => _parserService.parseImageToBase64(ImageSource.camera),
+              );
+            },
+            child: const Text('Take Photo'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogCtx);
+              _processImport(
+                context: context,
+                fileType: "Image (Gallery)",
+                isVision: true,
+                extractor: () => _parserService.parseImageToBase64(ImageSource.gallery),
+              );
+            },
+            child: const Text('Upload Gallery'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _importFromPdf(BuildContext context) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+      );
+      if (result != null && result.files.single.path != null) {
+        if (context.mounted) {
+          _processImport(
+            context: context,
+            fileType: "PDF",
+            isVision: true,
+            extractor: () => _parserService.parsePdfToBase64(result.files.single.path!),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("PDF pick error: $e");
+    }
+  }
+
+  Future<void> _importFromExcel(BuildContext context) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+      );
+      if (result != null && result.files.single.path != null) {
+        if (context.mounted) {
+          _processImport(
+            context: context,
+            fileType: "Excel",
+            isVision: false,
+            extractor: () => _parserService.parseExcel(result.files.single.path!),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Excel pick error: $e");
+    }
+  }
+
+  Future<void> _importFromCsv(BuildContext context) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+      );
+      if (result != null && result.files.single.path != null) {
+        if (context.mounted) {
+          _processImport(
+            context: context,
+            fileType: "CSV",
+            isVision: false,
+            extractor: () => _parserService.parseCsv(result.files.single.path!),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("CSV pick error: $e");
     }
   }
 }
