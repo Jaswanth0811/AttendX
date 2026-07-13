@@ -60,19 +60,19 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
     }
   }
 
-  String _lastFirebaseUrl = "";
-  StreamSubscription? _firebaseSubscription;
-  String? _localAppInstanceId;
+  bool _hasUnsavedChanges = false;
 
   void updateSettings(SettingsProvider settings) {
     _excludedSubjectIds = settings.excludedSubjectIds;
     final bool autoSyncChanged = _autoSync != settings.autoSync;
-    final bool urlChanged = _lastFirebaseUrl != settings.firebaseUrl;
     _autoSync = settings.autoSync;
-    _lastFirebaseUrl = settings.firebaseUrl;
     
-    if (autoSyncChanged || urlChanged) {
-      _initFirebaseListener(settings.firebaseUrl);
+    if (autoSyncChanged) {
+      _syncTimer?.cancel();
+      if (_autoSync) {
+        _syncTimer = Timer.periodic(const Duration(seconds: 5), (_) => _performPeriodicSync());
+        _performPeriodicSync();
+      }
     }
     
     _calculateOverallPercentage();
@@ -119,7 +119,8 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
 
     _syncTimer?.cancel();
     if (_autoSync) {
-      _syncTimer = Timer.periodic(const Duration(seconds: 5), (_) => _performStartupSync());
+      _syncTimer = Timer.periodic(const Duration(seconds: 5), (_) => _performPeriodicSync());
+      _performPeriodicSync();
     }
   }
 
@@ -128,7 +129,8 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _syncTimer?.cancel();
       if (_autoSync) {
-        _syncTimer = Timer.periodic(const Duration(seconds: 5), (_) => _performStartupSync());
+        _syncTimer = Timer.periodic(const Duration(seconds: 5), (_) => _performPeriodicSync());
+        _performPeriodicSync();
       }
     } else if (state == AppLifecycleState.paused) {
       _syncTimer?.cancel();
@@ -138,210 +140,84 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
   @override
   void dispose() {
     _syncTimer?.cancel();
-    _firebaseSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  Future<void> _performStartupSync() async {
-    try {
-      final driveService = DriveService();
-      final driveTime = await driveService.getBackupModifiedTime();
-      if (driveTime == null) return;
+  Future<void> _performPeriodicSync() async {
+    if (!_autoSync) return;
 
-      final prefs = await SharedPreferences.getInstance();
-      final lastSyncedStr = prefs.getString('last_synced_drive_time') ?? '';
-      
-      bool needsSync = false;
-      if (lastSyncedStr.isEmpty) {
-        needsSync = true;
-      } else {
-        final lastSynced = DateTime.tryParse(lastSyncedStr);
-        if (lastSynced == null || driveTime.toUtc().isAfter(lastSynced.toUtc().add(const Duration(seconds: 2)))) {
-          needsSync = true;
+    if (_hasUnsavedChanges) {
+      try {
+        debugPrint("Periodic sync: Uploading local changes to Drive...");
+        final uploadedTime = await DriveService().backupDatabase(silentOnly: true);
+        if (uploadedTime != null) {
+          _hasUnsavedChanges = false;
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_synced_drive_time', uploadedTime.toIso8601String());
+          debugPrint("Periodic sync: Upload complete. Synced timestamp set to $uploadedTime");
         }
+      } catch (e) {
+        debugPrint("Periodic sync: Upload failed: $e");
       }
+    } else {
+      try {
+        final driveService = DriveService();
+        final driveTime = await driveService.getBackupModifiedTime();
+        if (driveTime == null) return;
 
-      if (needsSync) {
-        final restoredTime = await driveService.restoreDatabase(silentOnly: true);
-        final finalSyncedTime = restoredTime ?? driveTime;
+        final prefs = await SharedPreferences.getInstance();
+        final lastSyncedStr = prefs.getString('last_synced_drive_time') ?? '';
         
-        await prefs.setString('last_synced_drive_time', finalSyncedTime.toIso8601String());
-
-        if (SettingsProvider.instance != null) {
-          await SettingsProvider.instance!.reloadSettings();
-        }
-
-        _activeSemester = await _db.getActiveSemester();
-        _subjects = await _db.getSubjects();
-        _timetableSlots = await _db.getTimetableSlots();
-        _allAttendance = await _db.getAllAttendance();
-        _attendanceByDate = {};
-        for (var record in _allAttendance) {
-          if (_attendanceByDate.containsKey(record.date)) {
-            _attendanceByDate[record.date]!.add(record);
-          } else {
-            _attendanceByDate[record.date] = [record];
+        bool needsSync = false;
+        if (lastSyncedStr.isEmpty) {
+          needsSync = true;
+        } else {
+          final lastSynced = DateTime.tryParse(lastSyncedStr);
+          if (lastSynced == null || driveTime.toUtc().isAfter(lastSynced.toUtc().add(const Duration(seconds: 2)))) {
+            needsSync = true;
           }
         }
-        _holidays = await _db.getHolidays();
-        _holidayDates = _holidays.map((h) => h.date).toSet();
-        _calculateOverallPercentage();
-        notifyListeners();
-        debugPrint("Silently restored database backup from Drive, synced at: $finalSyncedTime");
+
+        if (needsSync) {
+          debugPrint("Periodic sync: Newer backup found on Drive ($driveTime). Restoring...");
+          final restoredTime = await driveService.restoreDatabase(silentOnly: true);
+          final finalSyncedTime = restoredTime ?? driveTime;
+          
+          await prefs.setString('last_synced_drive_time', finalSyncedTime.toIso8601String());
+
+          if (SettingsProvider.instance != null) {
+            await SettingsProvider.instance!.reloadSettings();
+          }
+
+          _activeSemester = await _db.getActiveSemester();
+          _subjects = await _db.getSubjects();
+          _timetableSlots = await _db.getTimetableSlots();
+          _allAttendance = await _db.getAllAttendance();
+          _attendanceByDate = {};
+          for (var record in _allAttendance) {
+            if (_attendanceByDate.containsKey(record.date)) {
+              _attendanceByDate[record.date]!.add(record);
+            } else {
+              _attendanceByDate[record.date] = [record];
+            }
+          }
+          _holidays = await _db.getHolidays();
+          _holidayDates = _holidays.map((h) => h.date).toSet();
+          _calculateOverallPercentage();
+          notifyListeners();
+          debugPrint("Periodic sync: Restore complete, synced at: $finalSyncedTime");
+        }
+      } catch (e) {
+        debugPrint("Periodic sync: Restore check failed: $e");
       }
-    } catch (e) {
-      debugPrint("Startup auto-sync failed: $e");
     }
   }
 
   void _triggerAutoBackup() {
     if (_autoSync) {
-      DriveService().backupDatabase(silentOnly: true).then((uploadedTime) async {
-        if (uploadedTime != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('last_synced_drive_time', uploadedTime.toIso8601String());
-          debugPrint("Database backed up successfully. Updated local sync timestamp to: $uploadedTime");
-          
-          await _sendFirebaseSyncSignal(uploadedTime);
-        }
-      }).catchError((e) {
-        debugPrint("Background auto-backup failed: $e");
-      });
-    }
-  }
-
-  Future<String> _getOrCreateAppInstanceId() async {
-    if (_localAppInstanceId != null) return _localAppInstanceId!;
-    final prefs = await SharedPreferences.getInstance();
-    String? id = prefs.getString('app_instance_id');
-    if (id == null) {
-      id = DateTime.now().microsecondsSinceEpoch.toString();
-      await prefs.setString('app_instance_id', id);
-    }
-    _localAppInstanceId = id;
-    return id;
-  }
-
-  void _initFirebaseListener(String firebaseUrl) {
-    _firebaseSubscription?.cancel();
-    if (!_autoSync || firebaseUrl.isEmpty) return;
-
-    final url = firebaseUrl.endsWith('/') ? firebaseUrl : '$firebaseUrl/';
-    final signalUrl = "${url}sync_signal.json";
-
-    debugPrint("Initializing Firebase Realtime Sync listener on: $signalUrl");
-
-    final client = http.Client();
-    final request = http.Request("GET", Uri.parse(signalUrl));
-    request.headers["Accept"] = "text/event-stream";
-
-    client.send(request).then((response) {
-      _firebaseSubscription = response.stream
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .listen(
-        (line) async {
-          if (line.startsWith("data: ")) {
-            final dataStr = line.substring(6).trim();
-            if (dataStr == "null" || dataStr.isEmpty) return;
-            try {
-              final parsed = jsonDecode(dataStr);
-              if (parsed is Map) {
-                final double? timestamp = double.tryParse(parsed['timestamp']?.toString() ?? '');
-                final String sender = parsed['sender']?.toString() ?? '';
-                final myId = await _getOrCreateAppInstanceId();
-
-                if (sender != myId && timestamp != null) {
-                  final prefs = await SharedPreferences.getInstance();
-                  final lastSyncedStr = prefs.getString('last_synced_drive_time') ?? '';
-                  final lastSynced = DateTime.tryParse(lastSyncedStr);
-
-                  final remoteTime = DateTime.fromMillisecondsSinceEpoch(timestamp.toInt());
-                  if (lastSynced == null || remoteTime.isAfter(lastSynced.add(const Duration(seconds: 2)))) {
-                    debugPrint("Realtime Sync: Remote update detected from $sender at $remoteTime. Restoring...");
-                    await _performRealtimeRestore(remoteTime);
-                  }
-                }
-              }
-            } catch (e) {
-              debugPrint("Error parsing Firebase sync signal: $e");
-            }
-          }
-        },
-        onError: (err) {
-          debugPrint("Firebase stream error: $err. Reconnecting in 5 seconds...");
-          Future.delayed(const Duration(seconds: 5), () => _initFirebaseListener(firebaseUrl));
-        },
-        onDone: () {
-          debugPrint("Firebase stream closed. Reconnecting in 5 seconds...");
-          Future.delayed(const Duration(seconds: 5), () => _initFirebaseListener(firebaseUrl));
-        },
-        cancelOnError: true,
-      );
-    }).catchError((e) {
-      debugPrint("Failed to connect to Firebase Realtime Database: $e. Reconnecting in 10 seconds...");
-      Future.delayed(const Duration(seconds: 10), () => _initFirebaseListener(firebaseUrl));
-    });
-  }
-
-  Future<void> _performRealtimeRestore(DateTime driveTime) async {
-    try {
-      final driveService = DriveService();
-      final restoredTime = await driveService.restoreDatabase(silentOnly: true);
-      final finalSyncedTime = restoredTime ?? driveTime;
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('last_synced_drive_time', finalSyncedTime.toIso8601String());
-
-      if (SettingsProvider.instance != null) {
-        await SettingsProvider.instance!.reloadSettings();
-      }
-
-      _activeSemester = await _db.getActiveSemester();
-      _subjects = await _db.getSubjects();
-      _timetableSlots = await _db.getTimetableSlots();
-      _allAttendance = await _db.getAllAttendance();
-      _attendanceByDate = {};
-      for (var record in _allAttendance) {
-        if (_attendanceByDate.containsKey(record.date)) {
-          _attendanceByDate[record.date]!.add(record);
-        } else {
-          _attendanceByDate[record.date] = [record];
-        }
-      }
-      _holidays = await _db.getHolidays();
-      _holidayDates = _holidays.map((h) => h.date).toSet();
-      _calculateOverallPercentage();
-      notifyListeners();
-      debugPrint("Realtime restore complete, synced at: $finalSyncedTime");
-    } catch (e) {
-      debugPrint("Realtime restore failed: $e");
-    }
-  }
-
-  Future<void> _sendFirebaseSyncSignal(DateTime uploadedTime) async {
-    try {
-      final settings = SettingsProvider.instance;
-      if (settings == null) return;
-
-      final dbUrl = settings.firebaseUrl.isNotEmpty 
-          ? settings.firebaseUrl 
-          : 'https://attendx-0811-default-rtdb.firebaseio.com';
-      final url = dbUrl.endsWith('/') ? dbUrl : '$dbUrl/';
-      final signalUrl = "${url}sync_signal.json";
-
-      final myId = await _getOrCreateAppInstanceId();
-      await http.put(
-        Uri.parse(signalUrl),
-        body: jsonEncode({
-          'timestamp': uploadedTime.millisecondsSinceEpoch,
-          'sender': myId,
-        }),
-      );
-      debugPrint("Sent Firebase realtime sync signal for timestamp: $uploadedTime");
-    } catch (e) {
-      debugPrint("Failed to send Firebase sync signal: $e");
+      _hasUnsavedChanges = true;
+      debugPrint("Data modified. Scheduled for next 5-second auto-sync upload.");
     }
   }
 

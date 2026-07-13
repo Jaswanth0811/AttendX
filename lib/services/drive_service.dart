@@ -43,12 +43,23 @@ class DriveService {
     return drive.DriveApi(client);
   }
 
+  Future<String> _getBackupFileName() async {
+    var account = googleSignIn.currentUser;
+    account ??= await googleSignIn.signInSilently();
+    if (account != null && account.email.contains('@')) {
+      final prefix = account.email.split('@').first;
+      return '$prefix.db';
+    }
+    return 'attendx_database_backup.db';
+  }
+
   Future<DateTime?> getBackupModifiedTime() async {
     try {
       final driveApi = await _getDriveApi(silentOnly: true);
       if (driveApi == null) return null;
 
-      final query = "name = 'attendx_database_backup.db' and 'appDataFolder' in parents";
+      final fileName = await _getBackupFileName();
+      final query = "name = '$fileName' and 'appDataFolder' in parents";
       final fileList = await driveApi.files.list(
         spaces: 'appDataFolder',
         q: query,
@@ -78,7 +89,8 @@ class DriveService {
 
     await DatabaseHelper().checkpoint();
 
-    final query = "name = 'attendx_database_backup.db' and 'appDataFolder' in parents";
+    final fileName = await _getBackupFileName();
+    final query = "name = '$fileName' and 'appDataFolder' in parents";
     final fileList = await driveApi.files.list(
       spaces: 'appDataFolder',
       q: query,
@@ -86,7 +98,7 @@ class DriveService {
     );
 
     final drive.File fileToUpload = drive.File()
-      ..name = 'attendx_database_backup.db'
+      ..name = fileName
       ..parents = ['appDataFolder'];
 
     final media = drive.Media(dbFile.openRead(), dbFile.lengthSync());
@@ -94,7 +106,7 @@ class DriveService {
     drive.File uploadedFile;
     if (fileList.files != null && fileList.files!.isNotEmpty) {
       final fileId = fileList.files!.first.id!;
-      final updateFile = drive.File()..name = 'attendx_database_backup.db';
+      final updateFile = drive.File()..name = fileName;
       uploadedFile = await driveApi.files.update(
         updateFile,
         fileId,
@@ -115,7 +127,8 @@ class DriveService {
     final driveApi = await _getDriveApi(silentOnly: silentOnly);
     if (driveApi == null) throw Exception("User didn't sign in.");
 
-    final query = "name = 'attendx_database_backup.db' and 'appDataFolder' in parents";
+    final fileName = await _getBackupFileName();
+    final query = "name = '$fileName' and 'appDataFolder' in parents";
     final fileList = await driveApi.files.list(
       spaces: 'appDataFolder',
       q: query,
