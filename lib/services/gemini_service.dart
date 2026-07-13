@@ -2,8 +2,37 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-class OpenRouterService {
-  static const String _defaultModel = "google/gemini-2.5-flash:free";
+class GeminiService {
+  static const String _fallbackModel = "gemini-2.5-flash";
+
+  Future<List<String>> verifyKeyAndGetModels(String apiKey) async {
+    final response = await http.get(
+      Uri.parse("https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey"),
+    );
+    if (response.statusCode != 200) {
+      throw Exception("Invalid API Key or connection failed (Status ${response.statusCode})");
+    }
+    final data = jsonDecode(response.body);
+    final List<String> models = [];
+    if (data['models'] != null) {
+      for (var m in data['models']) {
+        final name = m['name']?.toString().replaceAll('models/', '') ?? '';
+        // Only keep primary gemini models that support multimodal/generation
+        if (name.startsWith('gemini-') && !name.contains('-tuning') && !name.contains('vision')) {
+          models.add(name);
+        }
+      }
+    }
+    // De-duplicate
+    final uniqueModels = models.toSet().toList();
+    // Sort models, placing gemini-2.5-flash at the top
+    uniqueModels.sort((a, b) {
+      if (a == 'gemini-2.5-flash') return -1;
+      if (b == 'gemini-2.5-flash') return 1;
+      return a.compareTo(b);
+    });
+    return uniqueModels.isNotEmpty ? uniqueModels : [_fallbackModel, 'gemini-1.5-flash', 'gemini-1.5-pro'];
+  }
 
   Future<List<Map<String, dynamic>>> parseTimetable({
     required String rawText,
@@ -14,15 +43,16 @@ class OpenRouterService {
     required int lunchEndMins,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final apiKey = prefs.getString('openrouter_api_key') ?? '';
+    final apiKey = prefs.getString('gemini_api_key') ?? '';
+    final model = prefs.getString('gemini_model') ?? _fallbackModel;
     if (apiKey.isEmpty) {
-      throw Exception('OpenRouter API Key not found. Please set it in Settings.');
+      throw Exception('Gemini API Key not found. Please set it via the settings menu.');
     }
 
     final String prompt = """
 You are an expert AI timetable parsing assistant.
 Analyze the following raw timetable data extracted from a $fileType file.
-Extract all scheduled classes/periods and return them ONLY as a raw, valid JSON array. Do not include markdown code block syntax (like ```json). Just the raw JSON array.
+Extract all scheduled classes/periods and return them as a valid JSON array.
 
 College Configuration:
 - College Start Time: ${_formatMins(collegeStartMins)}
@@ -65,19 +95,19 @@ Expected JSON output format:
 """;
 
     final response = await http.post(
-      Uri.parse("https://openrouter.ai/api/v1/chat/completions"),
-      headers: {
-        "Authorization": "Bearer $apiKey",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/Jaswanth0811/AttendX",
-        "X-Title": "AttendX Attendance App",
-      },
+      Uri.parse("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"),
+      headers: {"Content-Type": "application/json"},
       body: jsonEncode({
-        "model": _defaultModel,
-        "messages": [
-          {"role": "user", "content": prompt}
+        "contents": [
+          {
+            "parts": [
+              {"text": prompt}
+            ]
+          }
         ],
-        "temperature": 0.1,
+        "generationConfig": {
+          "responseMimeType": "application/json"
+        }
       }),
     );
 
@@ -92,15 +122,16 @@ Expected JSON output format:
     required int lunchEndMins,
   }) async {
     final prefs = await SharedPreferences.getInstance();
-    final apiKey = prefs.getString('openrouter_api_key') ?? '';
+    final apiKey = prefs.getString('gemini_api_key') ?? '';
+    final model = prefs.getString('gemini_model') ?? _fallbackModel;
     if (apiKey.isEmpty) {
-      throw Exception('OpenRouter API Key not found. Please set it in Settings.');
+      throw Exception('Gemini API Key not found. Please set it via the settings menu.');
     }
 
     final String textPrompt = """
 You are an expert AI timetable parsing assistant.
 Analyze the attached image(s) representing a college timetable.
-Extract all scheduled classes/periods and return them ONLY as a raw, valid JSON array. Do not include markdown code block syntax (like ```json). Just the raw JSON array.
+Extract all scheduled classes/periods and return them as a valid JSON array.
 
 College Configuration:
 - College Start Time: ${_formatMins(collegeStartMins)}
@@ -139,33 +170,31 @@ Expected JSON output format:
 ]
 """;
 
-    final List<Map<String, dynamic>> content = [
-      {"type": "text", "text": textPrompt}
+    final List<Map<String, dynamic>> parts = [
+      {"text": textPrompt}
     ];
 
     for (var base64 in base64Images) {
-      content.add({
-        "type": "image_url",
-        "image_url": {
-          "url": "data:image/jpeg;base64,$base64"
+      parts.add({
+        "inlineData": {
+          "mimeType": "image/jpeg",
+          "data": base64
         }
       });
     }
 
     final response = await http.post(
-      Uri.parse("https://openrouter.ai/api/v1/chat/completions"),
-      headers: {
-        "Authorization": "Bearer $apiKey",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/Jaswanth0811/AttendX",
-        "X-Title": "AttendX Attendance App",
-      },
+      Uri.parse("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"),
+      headers: {"Content-Type": "application/json"},
       body: jsonEncode({
-        "model": _defaultModel,
-        "messages": [
-          {"role": "user", "content": content}
+        "contents": [
+          {
+            "parts": parts
+          }
         ],
-        "temperature": 0.1,
+        "generationConfig": {
+          "responseMimeType": "application/json"
+        }
       }),
     );
 
@@ -174,14 +203,20 @@ Expected JSON output format:
 
   List<Map<String, dynamic>> _processResponse(http.Response response) {
     if (response.statusCode != 200) {
-      throw Exception("OpenRouter request failed: status code ${response.statusCode}, ${response.body}");
+      throw Exception("Gemini request failed: status code ${response.statusCode}, ${response.body}");
     }
 
     final data = jsonDecode(response.body);
-    final String content = data['choices'][0]['message']['content'].toString().trim();
+    
+    String resContent = '';
+    try {
+      resContent = data['candidates'][0]['content']['parts'][0]['text'].toString().trim();
+    } catch (_) {
+      throw Exception("AI model response did not contain candidates content. Full response: ${response.body}");
+    }
     
     // Strip markdown JSON delimiters if present
-    String cleaned = content;
+    String cleaned = resContent;
     if (cleaned.startsWith("```json")) {
       cleaned = cleaned.substring(7);
     }

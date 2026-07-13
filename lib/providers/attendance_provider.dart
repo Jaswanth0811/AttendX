@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -18,6 +19,7 @@ import '../providers/settings_provider.dart';
 
 class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
   final DatabaseHelper _db = DatabaseHelper();
+  Timer? _syncTimer;
   
   Semester? _activeSemester;
   List<Subject> _subjects = [];
@@ -100,22 +102,27 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
     _isLoading = false;
     notifyListeners();
 
+    _syncTimer?.cancel();
     if (_autoSync) {
-      Future.delayed(const Duration(seconds: 5), _performStartupSync);
+      _syncTimer = Timer.periodic(const Duration(seconds: 5), (_) => _performStartupSync());
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _syncTimer?.cancel();
       if (_autoSync) {
-        Future.delayed(const Duration(seconds: 5), _performStartupSync);
+        _syncTimer = Timer.periodic(const Duration(seconds: 5), (_) => _performStartupSync());
       }
+    } else if (state == AppLifecycleState.paused) {
+      _syncTimer?.cancel();
     }
   }
 
   @override
   void dispose() {
+    _syncTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

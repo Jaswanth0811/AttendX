@@ -10,9 +10,10 @@ import '../utils/color_utils.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/settings_provider.dart';
 import '../services/timetable_parser_service.dart';
-import '../services/openrouter_service.dart';
+import '../services/gemini_service.dart';
 import 'timetable_import_preview_screen.dart';
 
 class TimetableScreen extends StatefulWidget {
@@ -77,19 +78,33 @@ class _TimetableScreenState extends State<TimetableScreen> {
           // Import Timetable button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _showImportOptions(context),
-                icon: const Icon(Icons.cloud_upload_outlined),
-                label: const Text('Import Timetable', style: TextStyle(fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showImportOptions(context),
+                    icon: const Icon(Icons.cloud_upload_outlined),
+                    label: const Text('Import Timetable', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.more_vert),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.all(12),
+                  ),
+                  onPressed: () => _showApiKeyDialog(context),
+                  tooltip: 'AI Model Settings',
+                ),
+              ],
             ),
           ),
 
@@ -471,11 +486,11 @@ class _TimetableScreenState extends State<TimetableScreen> {
   }
 
   final TimetableParserService _parserService = TimetableParserService();
-  final OpenRouterService _openRouterService = OpenRouterService();
+  final GeminiService _geminiService = GeminiService();
 
-  Future<void> _checkOpenRouterKey(BuildContext context, VoidCallback onKeyReady) async {
+  Future<void> _checkGeminiKey(BuildContext context, VoidCallback onKeyReady) async {
     final prefs = await SharedPreferences.getInstance();
-    final key = prefs.getString('openrouter_api_key') ?? '';
+    final key = prefs.getString('gemini_api_key') ?? '';
     if (key.isNotEmpty) {
       onKeyReady();
       return;
@@ -483,59 +498,228 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
     if (!context.mounted) return;
 
-    final keyController = TextEditingController();
-    showDialog(
+    // Show API settings dialog so they can configure and verify it
+    await _showApiKeyDialog(context);
+    final keyAfter = prefs.getString('gemini_api_key') ?? '';
+    if (keyAfter.isNotEmpty) {
+      onKeyReady();
+    }
+  }
+
+  Future<void> _showApiKeyDialog(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String currentKey = prefs.getString('gemini_api_key') ?? '';
+    final String currentModel = prefs.getString('gemini_model') ?? 'gemini-2.5-flash';
+
+    final keyController = TextEditingController(text: currentKey);
+    bool isValidated = currentKey.isNotEmpty;
+    bool isValidating = false;
+    List<String> availableModels = [currentModel];
+    if (!availableModels.contains('gemini-2.5-flash')) {
+      availableModels.addAll(['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']);
+      availableModels = availableModels.toSet().toList();
+    }
+    String selectedModel = currentModel;
+    String validationError = '';
+
+    if (!context.mounted) return;
+
+    await showDialog(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('OpenRouter API Key Required', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'To extract your timetable using AI, AttendX needs a free API Key from OpenRouter.',
-              style: TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'How to get a Free API Key:',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            const Text('1. Go to openrouter.ai/keys\\n2. Create a Free API Key\\n3. Copy and paste it below.', style: TextStyle(fontSize: 12)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: keyController,
-              decoration: const InputDecoration(
-                labelText: 'Paste API Key here',
-                border: OutlineInputBorder(),
-                hintText: 'sk-or-v1-...',
+      barrierDismissible: true,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('Google Gemini API Settings', style: TextStyle(fontWeight: FontWeight.bold)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'To import timetables using AI, please provide a Google AI Studio API Key.',
+                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 10),
+                  
+                  // Clear Hyperlink instruction
+                  InkWell(
+                    onTap: () => _launchUrl('https://aistudio.google.com/app/apikey'),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.open_in_new, size: 14, color: Theme.of(context).colorScheme.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Get a Free API Key here ↗',
+                          style: TextStyle(
+                            fontSize: 13, 
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  
+                  // Text field
+                  TextField(
+                    controller: keyController,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      labelText: 'Gemini API Key',
+                      hintText: 'AIzaSy...',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      prefixIcon: const Icon(Icons.vpn_key_outlined),
+                    ),
+                    onChanged: (text) {
+                      setDialogState(() {
+                        isValidated = false;
+                        validationError = '';
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Validation State and Action Button
+                  if (isValidating)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.verified_user_outlined),
+                        label: const Text('Verify API Connection'),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: () async {
+                          final key = keyController.text.trim();
+                          if (key.isEmpty) {
+                            setDialogState(() {
+                              validationError = 'API key cannot be empty';
+                            });
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isValidating = true;
+                            validationError = '';
+                          });
+
+                          try {
+                            final models = await _geminiService.verifyKeyAndGetModels(key);
+                            setDialogState(() {
+                              isValidating = false;
+                              isValidated = true;
+                              availableModels = models;
+                              if (!availableModels.contains(selectedModel)) {
+                                selectedModel = availableModels.first;
+                              }
+                            });
+                          } catch (e) {
+                            setDialogState(() {
+                              isValidating = false;
+                              isValidated = false;
+                              validationError = e.toString().replaceAll('Exception: ', '');
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+
+                  if (validationError.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      validationError,
+                      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
+                    ),
+                  ],
+
+                  if (isValidated) ...[
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle_outline, color: Colors.green, size: 18),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Connection Verified!',
+                          style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Model Dropdown Selection
+                    DropdownButtonFormField<String>(
+                      value: selectedModel,
+                      decoration: InputDecoration(
+                        labelText: 'Select Gemini Model',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      items: availableModels.map((m) => DropdownMenuItem(
+                        value: m,
+                        child: Text(m),
+                      )).toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          setDialogState(() => selectedModel = val);
+                        }
+                      },
+                    ),
+                  ],
+                ],
               ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newKey = keyController.text.trim();
-              if (newKey.isNotEmpty) {
-                await prefs.setString('openrouter_api_key', newKey);
-                if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                onKeyReady();
-              }
-            },
-            child: const Text('Save & Continue'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final key = keyController.text.trim();
+                  if (key.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please enter and verify API key first')),
+                    );
+                    return;
+                  }
+                  await prefs.setString('gemini_api_key', key);
+                  await prefs.setString('gemini_model', selectedModel);
+                  if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('✅ Settings Saved: using $selectedModel'), backgroundColor: Colors.green),
+                  );
+                },
+                child: const Text('Save Settings'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
+  Future<void> _launchUrl(String urlString) async {
+    final Uri url = Uri.parse(urlString);
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      throw Exception('Could not launch $url');
+    }
+  }
+
   void _showImportOptions(BuildContext context) {
-    _checkOpenRouterKey(context, () {
+    _checkGeminiKey(context, () {
       showModalBottomSheet(
         context: context,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -645,7 +829,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
       if (isVision) {
         // Send base64 image strings directly to AI model
         final List<String> images = extractedData is String ? [extractedData] : List<String>.from(extractedData);
-        result = await _openRouterService.parseTimetableWithVision(
+        result = await _geminiService.parseTimetableWithVision(
           base64Images: images,
           collegeStartMins: settings.collegeStartTimeMinutes,
           periodDuration: settings.periodDurationMinutes,
@@ -654,7 +838,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
         );
       } else {
         // Excel and CSV (text-based extraction)
-        result = await _openRouterService.parseTimetable(
+        result = await _geminiService.parseTimetable(
           rawText: extractedData as String,
           fileType: fileType,
           collegeStartMins: settings.collegeStartTimeMinutes,
