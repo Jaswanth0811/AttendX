@@ -24,6 +24,7 @@ class SettingsProvider with ChangeNotifier {
   bool _isLoaded = false;
   bool _autoSync = false;
   bool _dailyReminders = true;
+  String _firebaseUrl = "";
 
   SettingsProvider() {
     _instance = this;
@@ -59,6 +60,7 @@ class SettingsProvider with ChangeNotifier {
   DateTime get semesterEndDate => _semesterEndDate ?? DateTime.now().add(const Duration(days: 90));
   bool get autoSync => _autoSync;
   bool get dailyReminders => _dailyReminders;
+  String get firebaseUrl => _firebaseUrl;
 
   Future<void> reloadSettings() async {
     await _loadSettings();
@@ -143,6 +145,9 @@ class SettingsProvider with ChangeNotifier {
           final parts = val.split(',').where((x) => x.isNotEmpty).toList();
           _excludedSubjectIds = parts.map((x) => int.tryParse(x) ?? -1).where((x) => x != -1).toList();
           await _prefs?.setStringList(key, parts);
+        } else if (key == 'firebase_url') {
+          _firebaseUrl = val;
+          await _prefs?.setString(key, val);
         }
       }
     } else {
@@ -274,6 +279,13 @@ class SettingsProvider with ChangeNotifier {
     _dailyReminders = val;
     await _prefs?.setBool('daily_reminders', val);
     await _saveToDb('daily_reminders', val.toString());
+    notifyListeners();
+  }
+
+  Future<void> setFirebaseUrl(String val) async {
+    _firebaseUrl = val.trim();
+    await _prefs?.setString('firebase_url', _firebaseUrl);
+    await _saveToDb('firebase_url', _firebaseUrl);
     notifyListeners();
   }
 }

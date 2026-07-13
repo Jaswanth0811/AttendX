@@ -266,6 +266,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.link, color: Colors.orange),
+                  title: const Text('Firebase Database URL'),
+                  subtitle: Text(settings.firebaseUrl.isNotEmpty 
+                      ? settings.firebaseUrl 
+                      : 'Not configured (using default)'),
+                  onTap: () => _showFirebaseUrlDialog(context, settings),
+                ),
+                const Divider(height: 1),
                 SwitchListTile.adaptive(
                   secondary: const Icon(Icons.notifications_active, color: Colors.purple),
                   title: const Text('Daily Attendance Reminders'),
@@ -623,6 +632,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
         );
       },
+    );
+  }
+
+  void _showFirebaseUrlDialog(BuildContext context, SettingsProvider settings) {
+    final controller = TextEditingController(text: settings.firebaseUrl);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Firebase Database URL', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter your Firebase Realtime Database URL to enable instant multi-device sync signals.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'Firebase URL',
+                hintText: 'https://your-rtdb.firebaseio.com',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await settings.setFirebaseUrl(controller.text.trim());
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Firebase Database URL updated!')),
+                );
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
     );
   }
 
