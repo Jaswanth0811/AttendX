@@ -35,20 +35,26 @@ class UpdateService {
       final int localBuild = int.tryParse(localBuildStr) ?? 0;
 
       int remoteBuild = 0;
-      String remoteVersion = latestTag.replaceAll('v', '');
-      if (latestTag.contains('-build')) {
-        final parts = latestTag.split('-build');
+      final String cleanTag = latestTag.toLowerCase();
+      String remoteVersion = cleanTag.replaceAll('v', '');
+      if (cleanTag.contains('-build')) {
+        final parts = cleanTag.split('-build');
         remoteVersion = parts[0].replaceAll('v', '');
         remoteBuild = int.tryParse(parts[1]) ?? 0;
-      } else if (latestTag.contains('+')) {
-        final parts = latestTag.split('+');
+      } else if (cleanTag.contains('+')) {
+        final parts = cleanTag.split('+');
         remoteVersion = parts[0].replaceAll('v', '');
         remoteBuild = int.tryParse(parts[1]) ?? 0;
       }
 
+      final String cleanRemote = remoteVersion.split('+').first.split('-').first.trim();
+      final String cleanLocal = localVersion.split('+').first.split('-').first.trim();
+
+      debugPrint("Update Check: Clean Remote: '$cleanRemote' (Build: $remoteBuild), Clean Local: '$cleanLocal' (Build: $localBuild)");
+
       bool isNewer = false;
-      if (remoteVersion != localVersion) {
-        isNewer = _isVersionNewer(remoteVersion, localVersion);
+      if (cleanRemote != cleanLocal) {
+        isNewer = _isVersionNewer(cleanRemote, cleanLocal);
       } else {
         isNewer = remoteBuild > localBuild;
       }
@@ -150,10 +156,6 @@ class UpdateService {
             ),
             actions: [
               if (!isDownloading) ...[
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogCtx),
-                  child: const Text('Later'),
-                ),
                 ElevatedButton(
                   onPressed: () {
                     setDialogState(() {
