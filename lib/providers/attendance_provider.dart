@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/semester.dart';
 import '../models/subject.dart';
 import '../models/timetable_entry.dart';
@@ -133,36 +134,46 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
       final driveTime = await driveService.getBackupModifiedTime();
       if (driveTime == null) return;
 
-      final dbFolder = await getDatabasesPath();
-      final dbPath = p.join(dbFolder, 'attendx_database');
-      final dbFile = File(dbPath);
-
-      if (await dbFile.exists()) {
-        final localTime = await dbFile.lastModified();
-        if (driveTime.isAfter(localTime.add(const Duration(seconds: 2)))) {
-          await driveService.restoreDatabase(silentOnly: true);
-          
-          if (SettingsProvider.instance != null) {
-            await SettingsProvider.instance!.reloadSettings();
-          }
-
-          _activeSemester = await _db.getActiveSemester();
-          _subjects = await _db.getSubjects();
-          _timetableSlots = await _db.getTimetableSlots();
-          _allAttendance = await _db.getAllAttendance();
-          _attendanceByDate = {};
-          for (var record in _allAttendance) {
-            if (_attendanceByDate.containsKey(record.date)) {
-              _attendanceByDate[record.date]!.add(record);
-            } else {
-              _attendanceByDate[record.date] = [record];
-            }
-          }
-          _holidays = await _db.getHolidays();
-          _holidayDates = _holidays.map((h) => h.date).toSet();
-          _calculateOverallPercentage();
-          notifyListeners();
+      final prefs = await SharedPreferences.getInstance();
+      final lastSyncedStr = prefs.getString('last_synced_drive_time') ?? '';
+      
+      bool needsSync = false;
+      if (lastSyncedStr.isEmpty) {
+        needsSync = true;
+      } else {
+        final lastSynced = DateTime.tryParse(lastSyncedStr);
+        if (lastSynced == null || driveTime.toUtc().isAfter(lastSynced.toUtc().add(const Duration(seconds: 2)))) {
+          needsSync = true;
         }
+      }
+
+      if (needsSync) {
+        final restoredTime = await driveService.restoreDatabase(silentOnly: true);
+        final finalSyncedTime = restoredTime ?? driveTime;
+        
+        await prefs.setString('last_synced_drive_time', finalSyncedTime.toIso8601String());
+
+        if (SettingsProvider.instance != null) {
+          await SettingsProvider.instance!.reloadSettings();
+        }
+
+        _activeSemester = await _db.getActiveSemester();
+        _subjects = await _db.getSubjects();
+        _timetableSlots = await _db.getTimetableSlots();
+        _allAttendance = await _db.getAllAttendance();
+        _attendanceByDate = {};
+        for (var record in _allAttendance) {
+          if (_attendanceByDate.containsKey(record.date)) {
+            _attendanceByDate[record.date]!.add(record);
+          } else {
+            _attendanceByDate[record.date] = [record];
+          }
+        }
+        _holidays = await _db.getHolidays();
+        _holidayDates = _holidays.map((h) => h.date).toSet();
+        _calculateOverallPercentage();
+        notifyListeners();
+        debugPrint("Silently restored database backup from Drive, synced at: $finalSyncedTime");
       }
     } catch (e) {
       debugPrint("Startup auto-sync failed: $e");
@@ -171,7 +182,13 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
 
   void _triggerAutoBackup() {
     if (_autoSync) {
-      DriveService().backupDatabase(silentOnly: true).catchError((e) {
+      DriveService().backupDatabase(silentOnly: true).then((uploadedTime) async {
+        if (uploadedTime != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_synced_drive_time', uploadedTime.toIso8601String());
+          debugPrint("Database backed up successfully. Updated local sync timestamp to: $uploadedTime");
+        }
+      }).catchError((e) {
         debugPrint("Background auto-backup failed: $e");
       });
     }

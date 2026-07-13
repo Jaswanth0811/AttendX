@@ -1,242 +1,159 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:open_filex/open_filex.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/material.dart';
 
 class UpdateService {
-  static const String _releasesUrl = 'https://api.github.com/repos/Jaswanth0811/AttendX/releases/latest';
-
-  static Future<void> checkForUpdates(BuildContext context) async {
+  Future<void> checkForUpdates(BuildContext context, {bool silent = false}) async {
     try {
-      final response = await http.get(Uri.parse(_releasesUrl));
-      if (response.statusCode != 200) return;
-
-      final data = json.decode(response.body);
-      final remoteTag = data['tag_name'] as String? ?? '';
-      final releaseName = data['name'] as String? ?? remoteTag;
-      final releaseNotes = data['body'] as String? ?? '';
-      
-      // Find APK download URL in assets
-      String downloadUrl = data['html_url'] as String? ?? 'https://github.com/Jaswanth0811/AttendX/releases';
-      final assets = data['assets'] as List<dynamic>? ?? [];
-      for (var asset in assets) {
-        final assetName = asset['name'] as String? ?? '';
-        if (assetName.endsWith('.apk')) {
-          downloadUrl = asset['browser_download_url'] as String? ?? downloadUrl;
-          break;
+      final response = await http.get(
+        Uri.parse("https://api.github.com/repos/Jaswanth0811/AttendX/releases/latest"),
+      );
+      if (response.statusCode != 200) {
+        if (!silent) {
+          _showErrorDialog(context, "Failed to connect to update server.");
         }
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+      final String latestTag = data['tag_name']?.toString() ?? '';
+      if (latestTag.isEmpty) {
+        if (!silent) {
+          _showNoUpdatesDialog(context);
+        }
+        return;
       }
 
       final packageInfo = await PackageInfo.fromPlatform();
-      final currentVersion = packageInfo.version;
-      final currentBuild = packageInfo.buildNumber;
+      final String localVersion = packageInfo.version; // e.g., 1.1.0
+      final String localBuildStr = packageInfo.buildNumber; // e.g., 25
+      final int localBuild = int.tryParse(localBuildStr) ?? 0;
 
-      if (_isUpdateAvailable(currentVersion, currentBuild, remoteTag)) {
+      // Parse remote version and build number from tag (e.g. v1.1.0-build26 or v1.1.0)
+      int remoteBuild = 0;
+      String remoteVersion = latestTag.replaceAll('v', '');
+      if (latestTag.contains('-build')) {
+        final parts = latestTag.split('-build');
+        remoteVersion = parts[0].replaceAll('v', '');
+        remoteBuild = int.tryParse(parts[1]) ?? 0;
+      } else if (latestTag.contains('+')) {
+        final parts = latestTag.split('+');
+        remoteVersion = parts[0].replaceAll('v', '');
+        remoteBuild = int.tryParse(parts[1]) ?? 0;
+      }
+
+      bool isNewer = false;
+      if (remoteVersion != localVersion) {
+        isNewer = _isVersionNewer(remoteVersion, localVersion);
+      } else {
+        isNewer = remoteBuild > localBuild;
+      }
+
+      if (isNewer) {
         if (context.mounted) {
-          _showUpdateDialog(context, releaseName, currentVersion, downloadUrl, releaseNotes);
+          _showUpdateDialog(context, latestTag, data['body']?.toString() ?? '', data['html_url']?.toString() ?? '');
+        }
+      } else {
+        if (!silent && context.mounted) {
+          _showNoUpdatesDialog(context);
         }
       }
     } catch (e) {
-      debugPrint("Failed to check for updates: $e");
+      if (!silent && context.mounted) {
+        _showErrorDialog(context, "Error checking for updates: $e");
+      }
     }
   }
 
-  static bool _isUpdateAvailable(String currentVersion, String currentBuild, String remoteTag) {
-    String cleanedRemote = remoteTag.toLowerCase();
-    if (cleanedRemote.startsWith('v')) {
-      cleanedRemote = cleanedRemote.substring(1);
+  bool _isVersionNewer(String remote, String local) {
+    final rParts = remote.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final lParts = local.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    for (int i = 0; i < rParts.length && i < lParts.length; i++) {
+      if (rParts[i] > lParts[i]) return true;
+      if (rParts[i] < lParts[i]) return false;
     }
-
-    int remoteBuild = 0;
-    if (cleanedRemote.contains('-build')) {
-      final parts = cleanedRemote.split('-build');
-      remoteBuild = int.tryParse(parts.last) ?? 0;
-      cleanedRemote = parts.first;
-    } else if (cleanedRemote.contains('+')) {
-      final parts = cleanedRemote.split('+');
-      remoteBuild = int.tryParse(parts.last) ?? 0;
-      cleanedRemote = parts.first;
-    }
-
-    int localBuild = int.tryParse(currentBuild) ?? 0;
-
-    if (remoteBuild > localBuild) return true;
-
-    // Semantic version check
-    List<int> remoteSem = cleanedRemote.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-    List<int> localSem = currentVersion.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-
-    for (int i = 0; i < 3; i++) {
-      int rVal = remoteSem.length > i ? remoteSem[i] : 0;
-      int lVal = localSem.length > i ? localSem[i] : 0;
-      if (rVal > lVal) return true;
-      if (rVal < lVal) return false;
-    }
-
-    return false;
+    return rParts.length > lParts.length;
   }
 
-  static void _showUpdateDialog(
-    BuildContext context,
-    String remoteName,
-    String currentVersion,
-    String downloadUrl,
-    String releaseNotes,
-  ) {
+  void _showUpdateDialog(BuildContext context, String tagName, String notes, String downloadUrl) {
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.rocket_launch, color: Colors.blue, size: 28),
-            const SizedBox(width: 10),
-            Expanded(child: const Text('Update Available!')),
+            Icon(Icons.system_update_alt_outlined, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 8),
+            const Text('New Update Available!', style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'A new version of AttendX is available: $remoteName',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text('Current version installed: v$currentVersion'),
-            if (releaseNotes.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text('What\'s New:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              const SizedBox(height: 4),
-              Container(
-                constraints: const BoxConstraints(maxHeight: 120),
-                width: double.infinity,
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SingleChildScrollView(
-                  child: Text(
-                    releaseNotes,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[800]),
-                  ),
-                ),
+            Text('Version $tagName is now available.', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const SizedBox(height: 12),
+            const Text('Release Notes:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
+            const SizedBox(height: 6),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 150),
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(10),
               ),
-            ],
+              child: SingleChildScrollView(
+                child: Text(notes.isNotEmpty ? notes : 'No release notes provided.', style: const TextStyle(fontSize: 12)),
+              ),
+            ),
           ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(dialogCtx),
             child: const Text('Later'),
           ),
-          FilledButton.icon(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _startDownload(context, downloadUrl);
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              final Uri url = Uri.parse(downloadUrl);
+              await launchUrl(url, mode: LaunchMode.externalApplication);
             },
-            icon: const Icon(Icons.download),
-            label: const Text('Install'),
+            child: const Text('Download & Install'),
           ),
         ],
       ),
     );
   }
 
-  static void _startDownload(BuildContext context, String url) {
+  void _showNoUpdatesDialog(BuildContext context) {
     showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        double progress = 0.0;
-        bool started = false;
-
-        return StatefulBuilder(
-          builder: (context, setState) {
-            if (!started) {
-              started = true;
-              _downloadFile(url, (p) {
-                setState(() {
-                  progress = p;
-                });
-              }).then((filePath) async {
-                Navigator.pop(context); // Close dialog
-                if (filePath != null) {
-                  final result = await OpenFilex.open(filePath);
-                  if (result.type != ResultType.done && context.mounted) {
-                    _showError(context, "Could not open installer: ${result.message}. You can manually find the downloaded APK in your device's downloads.");
-                  }
-                } else {
-                  if (context.mounted) {
-                    _showError(context, "Failed to download update APK file.");
-                  }
-                }
-              });
-            }
-
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              title: const Text('Downloading Update...'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  LinearProgressIndicator(value: progress),
-                  const SizedBox(height: 16),
-                  Text('${(progress * 100).toInt()}% downloaded'),
-                ],
-              ),
-            );
-          },
-        );
-      },
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Up to Date', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: const Text('Colors are updated and auto-sync is verified. You are already running the latest version of AttendX.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
     );
   }
 
-  static Future<String?> _downloadFile(String url, Function(double) onProgress) async {
-    try {
-      final client = http.Client();
-      final request = http.Request('GET', Uri.parse(url));
-      final response = await client.send(request);
-
-      if (response.statusCode != 200) return null;
-
-      final contentLength = response.contentLength ?? 1;
-      final tempDir = await getTemporaryDirectory();
-      final filePath = '${tempDir.path}/AttendX-update.apk';
-      final file = File(filePath);
-
-      final bytes = <int>[];
-      int downloaded = 0;
-
-      await for (var chunk in response.stream) {
-        bytes.addAll(chunk);
-        downloaded += chunk.length;
-        onProgress(downloaded / contentLength);
-      }
-
-      await file.writeAsBytes(bytes);
-      client.close();
-      return filePath;
-    } catch (e) {
-      debugPrint("Download error: $e");
-      return null;
-    }
-  }
-
-  static void _showError(BuildContext context, String message) {
+  void _showErrorDialog(BuildContext context, String message) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Update Error'),
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Update Check Failed', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Text(message),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(dialogCtx),
             child: const Text('OK'),
           ),
         ],

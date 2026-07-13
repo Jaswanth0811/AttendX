@@ -15,6 +15,7 @@ import '../providers/settings_provider.dart';
 import '../services/timetable_parser_service.dart';
 import '../services/gemini_service.dart';
 import 'timetable_import_preview_screen.dart';
+import '../services/update_service.dart';
 
 class TimetableScreen extends StatefulWidget {
   const TimetableScreen({super.key});
@@ -53,6 +54,11 @@ class _TimetableScreenState extends State<TimetableScreen> {
         elevation: 0,
         backgroundColor: Colors.transparent,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.system_update_alt_outlined),
+            onPressed: () => UpdateService().checkForUpdates(context),
+            tooltip: 'Check for Updates',
+          ),
           IconButton(
             icon: const Icon(Icons.share),
             onPressed: () => _shareTimetable(context, attendance),

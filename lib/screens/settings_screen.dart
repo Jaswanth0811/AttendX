@@ -18,6 +18,7 @@ import '../models/special_schedule.dart';
 import 'attendance_history_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../services/notification_service.dart';
+import '../services/update_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -420,7 +421,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 const Divider(height: 1),
-                 ListTile(
+                ListTile(
+                  leading: const Icon(Icons.system_update_alt_outlined),
+                  title: const Text('Check for Updates'),
+                  subtitle: const Text('Check GitHub for new releases'),
+                  onTap: () => UpdateService().checkForUpdates(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.info_outline),
                   title: const Text('About AttendX'),
                   subtitle: Text('Version $_appVersion'),

@@ -64,7 +64,7 @@ class DriveService {
     return null;
   }
 
-  Future<void> backupDatabase({bool silentOnly = false}) async {
+  Future<DateTime?> backupDatabase({bool silentOnly = false}) async {
     final driveApi = await _getDriveApi(silentOnly: silentOnly);
     if (driveApi == null) throw Exception("User didn't sign in.");
 
@@ -79,7 +79,11 @@ class DriveService {
     await DatabaseHelper().checkpoint();
 
     final query = "name = 'attendx_database_backup.db' and 'appDataFolder' in parents";
-    final fileList = await driveApi.files.list(spaces: 'appDataFolder', q: query);
+    final fileList = await driveApi.files.list(
+      spaces: 'appDataFolder',
+      q: query,
+      $fields: 'files(id, name)',
+    );
 
     final drive.File fileToUpload = drive.File()
       ..name = 'attendx_database_backup.db'
@@ -87,27 +91,43 @@ class DriveService {
 
     final media = drive.Media(dbFile.openRead(), dbFile.lengthSync());
 
+    drive.File uploadedFile;
     if (fileList.files != null && fileList.files!.isNotEmpty) {
       final fileId = fileList.files!.first.id!;
       final updateFile = drive.File()..name = 'attendx_database_backup.db';
-      await driveApi.files.update(updateFile, fileId, uploadMedia: media);
+      uploadedFile = await driveApi.files.update(
+        updateFile,
+        fileId,
+        uploadMedia: media,
+        $fields: 'id, name, modifiedTime',
+      );
     } else {
-      await driveApi.files.create(fileToUpload, uploadMedia: media);
+      uploadedFile = await driveApi.files.create(
+        fileToUpload,
+        uploadMedia: media,
+        $fields: 'id, name, modifiedTime',
+      );
     }
+    return uploadedFile.modifiedTime;
   }
 
-  Future<void> restoreDatabase({bool silentOnly = false}) async {
+  Future<DateTime?> restoreDatabase({bool silentOnly = false}) async {
     final driveApi = await _getDriveApi(silentOnly: silentOnly);
     if (driveApi == null) throw Exception("User didn't sign in.");
 
     final query = "name = 'attendx_database_backup.db' and 'appDataFolder' in parents";
-    final fileList = await driveApi.files.list(spaces: 'appDataFolder', q: query);
+    final fileList = await driveApi.files.list(
+      spaces: 'appDataFolder',
+      q: query,
+      $fields: 'files(id, name, modifiedTime)',
+    );
 
     if (fileList.files == null || fileList.files!.isEmpty) {
       throw Exception("No backup found on Google Drive.");
     }
 
-    final fileId = fileList.files!.first.id!;
+    final file = fileList.files!.first;
+    final fileId = file.id!;
     final drive.Media response = await driveApi.files.get(
       fileId,
       downloadOptions: drive.DownloadOptions.fullMedia,
@@ -127,5 +147,7 @@ class DriveService {
     
     if (await walFile.exists()) await walFile.delete();
     if (await shmFile.exists()) await shmFile.delete();
+
+    return file.modifiedTime;
   }
 }

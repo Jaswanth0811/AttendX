@@ -491,12 +491,26 @@ class _TimetableImportPreviewScreenState extends State<TimetableImportPreviewScr
         if (existingSubject.id != -2) {
           subjectId = existingSubject.id!;
         } else {
+          final List<String> premiumColors = [
+            '#3F51B5', // Indigo
+            '#E91E63', // Pink
+            '#9C27B0', // Purple
+            '#009688', // Teal
+            '#4CAF50', // Green
+            '#FF9800', // Orange
+            '#795548', // Brown
+            '#607D8B', // Blue Grey
+            '#2196F3', // Blue
+            '#9E9D24', // Lime Green
+          ];
+          final colorHex = premiumColors[subjectName.hashCode.abs() % premiumColors.length];
+
           // Create new subject
           final newSubject = Subject(
             name: subjectName,
             code: subjectCode,
             facultyName: facultyName,
-            colorHex: '#3F51B5', // Default Indigo theme color
+            colorHex: colorHex,
             createdAt: DateTime.now().millisecondsSinceEpoch,
           );
           // Wait, addSubject returns final ID!
