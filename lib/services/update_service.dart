@@ -79,7 +79,10 @@ class UpdateService {
     return rParts.length > lParts.length;
   }
 
-  void _showUpdateDialog(BuildContext context, String tagName, String notes, Map<String, dynamic> releaseData) {
+  void _showUpdateDialog(BuildContext context, String tagName, String notes, Map<String, dynamic> releaseData) async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    final String localVersion = packageInfo.version;
+
     String downloadUrl = '';
     final List<dynamic> assets = releaseData['assets'] ?? [];
     if (assets.isNotEmpty) {
@@ -92,6 +95,8 @@ class UpdateService {
     bool isDownloading = false;
     double progress = 0.0;
     String statusText = '';
+
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -118,7 +123,7 @@ class UpdateService {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (!isDownloading) ...[
-                  Text('Version $tagName is now available.', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text('Version $tagName is now available (Your version: $localVersion).', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   const SizedBox(height: 12),
                   const Text('Release Notes:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
                   const SizedBox(height: 6),
@@ -166,7 +171,12 @@ class UpdateService {
                       },
                       onComplete: (apkPath) async {
                         Navigator.pop(dialogCtx);
-                        await OpenFilex.open(apkPath);
+                        final openResult = await OpenFilex.open(apkPath);
+                        if (openResult.type != ResultType.done) {
+                          debugPrint("OpenFilex failed to open APK: ${openResult.message}. Falling back to browser...");
+                          final Uri fallbackUri = Uri.parse(downloadUrl);
+                          await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+                        }
                       },
                       onError: (err) {
                         setDialogState(() {
