@@ -114,7 +114,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         (s) => s.id == slot.subjectId,
                         orElse: () => Subject(
                           id: -1,
-                          name: 'Free Period',
+                          name: 'Free Period or Class',
                           code: 'FREE',
                           facultyName: '',
                           colorHex: '#EEEEEE',
@@ -143,7 +143,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'Period ${slot.periodNumber}',
+                                        'Period or Class ${slot.periodNumber}',
                                         style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
@@ -207,7 +207,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
           ),
           const SizedBox(height: 16),
           const Text(
-            'No Periods',
+            'No Periods or Classes',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -215,7 +215,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Tap + to add periods for ${_dayFullNames[_selectedDay - 1]}',
+            'Tap + to add periods or classes for ${_dayFullNames[_selectedDay - 1]}',
             style: const TextStyle(
               fontSize: 14,
               color: Colors.grey,
@@ -245,8 +245,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Period'),
-        content: Text('Are you sure you want to delete Period ${slot.periodNumber}?'),
+        title: const Text('Delete Period or Class'),
+        content: Text('Are you sure you want to delete Period or Class ${slot.periodNumber}?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -502,7 +502,7 @@ class _TimetableEditorSheetState extends State<TimetableEditorSheet> {
 
     final subjects = attendance.subjects;
     final selectedSubjectName = _selectedSubjectId == null
-        ? 'Free Period'
+        ? 'Free Period or Class'
         : subjects.firstWhere((s) => s.id == _selectedSubjectId).name;
 
     return Padding(
@@ -528,7 +528,7 @@ class _TimetableEditorSheetState extends State<TimetableEditorSheet> {
           ),
           const SizedBox(height: 16),
           Text(
-            widget.editingSlot != null ? 'Edit Period' : 'Add Period',
+            widget.editingSlot != null ? 'Edit Period or Class' : 'Add Period or Class',
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -548,7 +548,7 @@ class _TimetableEditorSheetState extends State<TimetableEditorSheet> {
             items: [
               const DropdownMenuItem<int?>(
                 value: null,
-                child: Text('Free Period'),
+                child: Text('Free Period or Class'),
               ),
               ...subjects.map((sub) => DropdownMenuItem<int?>(
                     value: sub.id,
@@ -650,7 +650,7 @@ class _TimetableEditorSheetState extends State<TimetableEditorSheet> {
                 ),
               ),
               child: Text(
-                widget.editingSlot != null ? 'Update' : 'Add Period',
+                widget.editingSlot != null ? 'Update' : 'Add Period or Class',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,

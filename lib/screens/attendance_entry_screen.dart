@@ -35,7 +35,12 @@ class _AttendanceEntryScreenState extends State<AttendanceEntryScreen> {
     final rawSlots = attendance.getSlotsForDate(widget.dateMillis);
     final List<TimetableSlot> slots = [];
     for (var slot in rawSlots) {
-      slots.addAll(slot.expandSlots(settings.periodDurationMinutes));
+      slots.addAll(slot.expandSlots(
+        settings.periodDurationMinutes,
+        collegeStartMins: settings.collegeStartTimeMinutes,
+        lunchStartMins: settings.lunchStartTimeMinutes,
+        lunchEndMins: settings.lunchEndTimeMinutes,
+      ));
     }
     slots.sort((a, b) => a.periodNumber.compareTo(b.periodNumber));
 
@@ -65,7 +70,7 @@ class _AttendanceEntryScreenState extends State<AttendanceEntryScreen> {
                     final slot = slots[index];
                     final scheduledSubject = attendance.subjects.firstWhere(
                       (s) => s.id == slot.subjectId,
-                      orElse: () => Subject(id: -1, name: 'Free Period', code: 'FREE', facultyName: '', colorHex: '#9E9E9E', createdAt: 0),
+                      orElse: () => Subject(id: -1, name: 'Free Period or Class', code: 'FREE', facultyName: '', colorHex: '#9E9E9E', createdAt: 0),
                     );
 
                     final record = dateRecords.where((r) => r.periodNumber == slot.periodNumber).firstOrNull;
@@ -115,7 +120,7 @@ class _AttendanceEntryScreenState extends State<AttendanceEntryScreen> {
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 4),
-          const Text('There are no periods to mark for this date.', style: TextStyle(color: Colors.grey)),
+          const Text('There are no periods or classes to mark for this date.', style: TextStyle(color: Colors.grey)),
         ],
       ),
     );
@@ -172,7 +177,7 @@ class _AttendanceEntryScreenState extends State<AttendanceEntryScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Period $period',
+                  'Period or Class $period',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
@@ -290,7 +295,7 @@ class _AttendanceEntryScreenState extends State<AttendanceEntryScreen> {
                         )),
                     const DropdownMenuItem<String>(
                       value: 'FREE',
-                      child: Text('Free Period'),
+                      child: Text('Free Period or Class'),
                     ),
                     const DropdownMenuItem<String>(
                       value: 'CANCELLED',
@@ -327,7 +332,7 @@ class _AttendanceEntryScreenState extends State<AttendanceEntryScreen> {
                     child: ElevatedButton.icon(
                       onPressed: () => _saveRecord(context, slot, provider, specialType!),
                       icon: const Icon(Icons.check),
-                      label: const Text('Save Period'),
+                      label: const Text('Save Period or Class'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: theme.colorScheme.primaryContainer,
                         foregroundColor: theme.colorScheme.onPrimaryContainer,

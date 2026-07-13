@@ -7,8 +7,8 @@ class SettingsProvider with ChangeNotifier {
   int _collegeStartTimeMinutes = 9 * 60; // 9:00 AM
   int _collegeEndTimeMinutes = 16 * 60; // 4:00 PM
   int _periodDurationMinutes = 60;
-  int _lunchBreakDurationMinutes = 60;
-  int _lunchPeriodIndex = 3;
+  int _lunchStartTimeMinutes = 12 * 60 + 40; // 12:40 PM
+  int _lunchEndTimeMinutes = 13 * 60 + 20; // 1:20 PM
   String _periodsPerDayString = "1:6,2:6,3:6,4:6,5:6,6:6";
   double _targetPercentage = 75.0;
   String _lastPromptedDate = "";
@@ -29,8 +29,22 @@ class SettingsProvider with ChangeNotifier {
   int get collegeStartTimeMinutes => _collegeStartTimeMinutes;
   int get collegeEndTimeMinutes => _collegeEndTimeMinutes;
   int get periodDurationMinutes => _periodDurationMinutes;
-  int get lunchBreakDurationMinutes => _lunchBreakDurationMinutes;
-  int get lunchPeriodIndex => _lunchPeriodIndex;
+  int get lunchStartTimeMinutes => _lunchStartTimeMinutes;
+  int get lunchEndTimeMinutes => _lunchEndTimeMinutes;
+  int get lunchBreakDurationMinutes => _lunchEndTimeMinutes - _lunchStartTimeMinutes;
+  int get lunchPeriodIndex {
+    int current = _collegeStartTimeMinutes;
+    int pNum = 1;
+    while (current < _lunchStartTimeMinutes) {
+      final nextEnd = current + _periodDurationMinutes;
+      if (nextEnd > _lunchStartTimeMinutes) {
+        break;
+      }
+      current += _periodDurationMinutes;
+      pNum++;
+    }
+    return pNum;
+  }
   String get periodsPerDayString => _periodsPerDayString;
   double get targetPercentage => _targetPercentage;
   String get lastPromptedDate => _lastPromptedDate;
@@ -46,8 +60,8 @@ class SettingsProvider with ChangeNotifier {
     _collegeStartTimeMinutes = _prefs?.getInt('college_start_time_minutes') ?? 9 * 60;
     _collegeEndTimeMinutes = _prefs?.getInt('college_end_time_minutes') ?? 16 * 60;
     _periodDurationMinutes = _prefs?.getInt('period_duration_minutes') ?? 60;
-    _lunchBreakDurationMinutes = _prefs?.getInt('lunch_break_duration_minutes') ?? 60;
-    _lunchPeriodIndex = _prefs?.getInt('lunch_period_index') ?? 3;
+    _lunchStartTimeMinutes = _prefs?.getInt('lunch_start_time_minutes') ?? 12 * 60 + 40;
+    _lunchEndTimeMinutes = _prefs?.getInt('lunch_end_time_minutes') ?? 13 * 60 + 20;
     _periodsPerDayString = _prefs?.getString('periods_per_day_string') ?? "1:6,2:6,3:6,4:6,5:6,6:6";
     _targetPercentage = _prefs?.getDouble('target_percentage') ?? 75.0;
     _lastPromptedDate = _prefs?.getString('last_prompt_date') ?? "";
@@ -72,20 +86,20 @@ class SettingsProvider with ChangeNotifier {
     required int start,
     required int end,
     required int period,
-    required int lunch,
-    required int lunchIdx,
+    required int lunchStart,
+    required int lunchEnd,
   }) async {
     _collegeStartTimeMinutes = start;
     _collegeEndTimeMinutes = end;
     _periodDurationMinutes = period;
-    _lunchBreakDurationMinutes = lunch;
-    _lunchPeriodIndex = lunchIdx;
+    _lunchStartTimeMinutes = lunchStart;
+    _lunchEndTimeMinutes = lunchEnd;
 
     await _prefs?.setInt('college_start_time_minutes', start);
     await _prefs?.setInt('college_end_time_minutes', end);
     await _prefs?.setInt('period_duration_minutes', period);
-    await _prefs?.setInt('lunch_break_duration_minutes', lunch);
-    await _prefs?.setInt('lunch_period_index', lunchIdx);
+    await _prefs?.setInt('lunch_start_time_minutes', lunchStart);
+    await _prefs?.setInt('lunch_end_time_minutes', lunchEnd);
     notifyListeners();
   }
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/semester.dart';
 import '../models/subject.dart';
@@ -15,7 +16,7 @@ import '../services/drive_service.dart';
 
 import '../providers/settings_provider.dart';
 
-class AttendanceProvider with ChangeNotifier {
+class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
   final DatabaseHelper _db = DatabaseHelper();
   
   Semester? _activeSemester;
@@ -62,6 +63,7 @@ class AttendanceProvider with ChangeNotifier {
   }
 
   AttendanceProvider() {
+    WidgetsBinding.instance.addObserver(this);
     loadData();
   }
 
@@ -99,8 +101,23 @@ class AttendanceProvider with ChangeNotifier {
     notifyListeners();
 
     if (_autoSync) {
-      _performStartupSync();
+      Future.delayed(const Duration(seconds: 5), _performStartupSync);
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (_autoSync) {
+        Future.delayed(const Duration(seconds: 5), _performStartupSync);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _performStartupSync() async {

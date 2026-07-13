@@ -324,14 +324,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ListTile(
                   leading: const Icon(Icons.schedule),
                   title: const Text('Timetable Global Settings'),
-                  subtitle: const Text('Start/End times, periods and lunch duration'),
+                  subtitle: const Text('Start/End times, period/class duration and lunch duration'),
                   onTap: () => _showGlobalTimetableSettings(context, settings),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.calendar_view_week),
-                  title: const Text('Periods Per Day'),
-                  subtitle: const Text('Number of periods from Monday to Saturday'),
+                  title: const Text('Periods or Classes Per Day'),
+                  subtitle: const Text('Number of periods or classes from Monday to Saturday (excluding Lunch Period)'),
                   onTap: () => _showPeriodsPerDaySettings(context, settings),
                 ),
               ],
@@ -364,13 +364,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: const Text('e.g., Semester break, festival week'),
                   onTap: () => _showAddHolidayRangeDialog(context, attendance),
                 ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.swap_calls, color: Colors.orange),
-                  title: const Text('Special Timetables / Day-Swaps'),
-                  subtitle: Text('${attendance.specialTimetables.length} overrides configured'),
-                  onTap: () => _showSpecialTimetableManagementSheet(context, attendance),
-                ),
               ],
             ),
           ),
@@ -394,6 +387,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('Add Special Schedule'),
                   subtitle: const Text('Courses, workshops, exams, events'),
                   onTap: () => _showAddSpecialScheduleDialog(context, attendance),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.swap_calls, color: Colors.deepPurple),
+                  title: const Text('Day Swaps'),
+                  subtitle: Text('${attendance.specialTimetables.length} overrides configured'),
+                  onTap: () => _showSpecialTimetableManagementSheet(context, attendance),
                 ),
               ],
             ),
@@ -508,15 +508,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           initialStartMins: settings.collegeStartTimeMinutes,
           initialEndMins: settings.collegeEndTimeMinutes,
           initialPeriodMins: settings.periodDurationMinutes,
-          initialLunchMins: settings.lunchBreakDurationMinutes,
-          initialLunchIndex: settings.lunchPeriodIndex,
-          onSave: (start, end, period, lunch, lunchIdx) async {
+          initialLunchStartMins: settings.lunchStartTimeMinutes,
+          initialLunchEndMins: settings.lunchEndTimeMinutes,
+          onSave: (start, end, period, lunchStart, lunchEnd) async {
             await settings.updateTimetableSettings(
               start: start,
               end: end,
               period: period,
-              lunch: lunch,
-              lunchIdx: lunchIdx,
+              lunchStart: lunchStart,
+              lunchEnd: lunchEnd,
             );
           },
         );
@@ -1661,17 +1661,17 @@ class TimetableSetupSheet extends StatefulWidget {
   final int initialStartMins;
   final int initialEndMins;
   final int initialPeriodMins;
-  final int initialLunchMins;
-  final int initialLunchIndex;
-  final Function(int start, int end, int period, int lunch, int lunchIdx) onSave;
+  final int initialLunchStartMins;
+  final int initialLunchEndMins;
+  final Function(int start, int end, int period, int lunchStart, int lunchEnd) onSave;
 
   const TimetableSetupSheet({
     super.key,
     required this.initialStartMins,
     required this.initialEndMins,
     required this.initialPeriodMins,
-    required this.initialLunchMins,
-    required this.initialLunchIndex,
+    required this.initialLunchStartMins,
+    required this.initialLunchEndMins,
     required this.onSave,
   });
 
@@ -1683,8 +1683,8 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
   late TextEditingController _startController;
   late TextEditingController _endController;
   late TextEditingController _periodController;
-  late TextEditingController _lunchController;
-  late TextEditingController _lunchIndexController;
+  late TextEditingController _lunchStartController;
+  late TextEditingController _lunchEndController;
 
   @override
   void initState() {
@@ -1692,8 +1692,8 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
     _startController = TextEditingController(text: _formatMinsToTime(widget.initialStartMins));
     _endController = TextEditingController(text: _formatMinsToTime(widget.initialEndMins));
     _periodController = TextEditingController(text: widget.initialPeriodMins.toString());
-    _lunchController = TextEditingController(text: widget.initialLunchMins.toString());
-    _lunchIndexController = TextEditingController(text: widget.initialLunchIndex.toString());
+    _lunchStartController = TextEditingController(text: _formatMinsToTime(widget.initialLunchStartMins));
+    _lunchEndController = TextEditingController(text: _formatMinsToTime(widget.initialLunchEndMins));
   }
 
   @override
@@ -1701,8 +1701,8 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
     _startController.dispose();
     _endController.dispose();
     _periodController.dispose();
-    _lunchController.dispose();
-    _lunchIndexController.dispose();
+    _lunchStartController.dispose();
+    _lunchEndController.dispose();
     super.dispose();
   }
 
@@ -1720,8 +1720,18 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
     return h * 60 + m;
   }
 
-  Future<void> _selectTime(BuildContext context, bool isStart) async {
-    final controller = isStart ? _startController : _endController;
+  Future<void> _selectTime(BuildContext context, String field) async {
+    TextEditingController controller;
+    if (field == 'start') {
+      controller = _startController;
+    } else if (field == 'end') {
+      controller = _endController;
+    } else if (field == 'lunchStart') {
+      controller = _lunchStartController;
+    } else {
+      controller = _lunchEndController;
+    }
+
     final parts = controller.text.split(':');
     final initialHour = parts.length == 2 ? (int.tryParse(parts[0]) ?? 9) : 9;
     final initialMinute = parts.length == 2 ? (int.tryParse(parts[1]) ?? 0) : 0;
@@ -1734,11 +1744,7 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
     if (picked != null) {
       final formatted = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
       setState(() {
-        if (isStart) {
-          _startController.text = formatted;
-        } else {
-          _endController.text = formatted;
-        }
+        controller.text = formatted;
       });
     }
   }
@@ -1785,7 +1791,7 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
                 child: TextField(
                   controller: _startController,
                   readOnly: true,
-                  onTap: () => _selectTime(context, true),
+                  onTap: () => _selectTime(context, 'start'),
                   decoration: const InputDecoration(
                     labelText: 'Start Time',
                     border: OutlineInputBorder(),
@@ -1798,7 +1804,7 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
                 child: TextField(
                   controller: _endController,
                   readOnly: true,
-                  onTap: () => _selectTime(context, false),
+                  onTap: () => _selectTime(context, 'end'),
                   decoration: const InputDecoration(
                     labelText: 'End Time',
                     border: OutlineInputBorder(),
@@ -1809,39 +1815,43 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
             ],
           ),
           const SizedBox(height: 12),
+          TextField(
+            controller: _periodController,
+            decoration: const InputDecoration(
+              labelText: 'Period or Class (mins)',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: TextField(
-                  controller: _periodController,
+                  controller: _lunchStartController,
+                  readOnly: true,
+                  onTap: () => _selectTime(context, 'lunchStart'),
                   decoration: const InputDecoration(
-                    labelText: 'Period (mins)',
+                    labelText: 'Lunch Start Time',
                     border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.access_time),
                   ),
-                  keyboardType: TextInputType.number,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: TextField(
-                  controller: _lunchController,
+                  controller: _lunchEndController,
+                  readOnly: true,
+                  onTap: () => _selectTime(context, 'lunchEnd'),
                   decoration: const InputDecoration(
-                    labelText: 'Lunch (mins)',
+                    labelText: 'Lunch End Time',
                     border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.access_time),
                   ),
-                  keyboardType: TextInputType.number,
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _lunchIndexController,
-            decoration: const InputDecoration(
-              labelText: 'Lunch is after Period #',
-              border: OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.number,
           ),
           const SizedBox(height: 24),
           SizedBox(
@@ -1852,10 +1862,10 @@ class _TimetableSetupSheetState extends State<TimetableSetupSheet> {
                 final start = _parseTimeToMins(_startController.text);
                 final end = _parseTimeToMins(_endController.text);
                 final period = int.tryParse(_periodController.text) ?? 50;
-                final lunch = int.tryParse(_lunchController.text) ?? 45;
-                final lunchIdx = int.tryParse(_lunchIndexController.text) ?? 4;
+                final lunchStart = _parseTimeToMins(_lunchStartController.text);
+                final lunchEnd = _parseTimeToMins(_lunchEndController.text);
 
-                widget.onSave(start, end, period, lunch, lunchIdx);
+                widget.onSave(start, end, period, lunchStart, lunchEnd);
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
@@ -1961,8 +1971,13 @@ class _PerDayPeriodsSheetState extends State<PerDayPeriodsSheet> {
           ),
           const SizedBox(height: 16),
           const Text(
-            'Periods Per Day',
+            'Periods or Classes Per Day',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '(excluding Lunch Period)',
+            style: TextStyle(fontSize: 14, color: Colors.grey),
           ),
           const SizedBox(height: 16),
           ConstrainedBox(
@@ -2019,7 +2034,7 @@ class _PerDayPeriodsSheetState extends State<PerDayPeriodsSheet> {
                 foregroundColor: theme.colorScheme.onPrimary,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               ),
-              child: const Text('Save Periods', style: TextStyle(fontWeight: FontWeight.bold)),
+              child: const Text('Save Periods or Classes', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
         ],

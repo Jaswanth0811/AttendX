@@ -61,6 +61,9 @@ class NotificationService {
     final now = DateTime.now();
     final prefs = await SharedPreferences.getInstance();
     final periodDuration = prefs.getInt('period_duration_minutes') ?? 60;
+    final collegeStart = prefs.getInt('college_start_time_minutes') ?? 9 * 60;
+    final lunchStart = prefs.getInt('lunch_start_time_minutes') ?? 12 * 60 + 40;
+    final lunchEnd = prefs.getInt('lunch_end_time_minutes') ?? 13 * 60 + 20;
     
     // Load overrides from DB
     final db = DatabaseHelper();
@@ -115,7 +118,12 @@ class NotificationService {
 
       final List<TimetableSlot> daySlots = [];
       for (var slot in rawDaySlots) {
-        daySlots.addAll(slot.expandSlots(periodDuration));
+        daySlots.addAll(slot.expandSlots(
+          periodDuration,
+          collegeStartMins: collegeStart,
+          lunchStartMins: lunchStart,
+          lunchEndMins: lunchEnd,
+        ));
       }
 
       for (var slot in daySlots) {
@@ -203,51 +211,60 @@ class NotificationService {
   Future<void> scheduleDailyPeriodEndReminders({
     required int startTimeMins,
     required int periodDurationMins,
-    required int lunchDurationMins,
-    required int lunchPeriodIdx,
+    required int lunchStartTimeMins,
+    required int lunchEndTimeMins,
     required int totalPeriodsToday,
   }) async {
     final now = DateTime.now();
     var currentMins = startTimeMins;
 
     for (int i = 1; i <= totalPeriodsToday; i++) {
-      if (i == lunchPeriodIdx) {
-        currentMins += lunchDurationMins;
-      } else {
-        currentMins += periodDurationMins;
-
-        final scheduledTime = DateTime(
-          now.year,
-          now.month,
-          now.day,
-          currentMins ~/ 60,
-          currentMins % 60,
-        );
-
-        if (scheduledTime.isBefore(now)) continue;
-
-        // Cancel previous one with same ID first
-        try {
-          await _notificationsPlugin.cancel(id: 1000 + i);
-        } catch (_) {}
-
-        await _notificationsPlugin.zonedSchedule(
-          id: 1000 + i,
-          title: 'Period $i Ended',
-          body: 'Your period $i has just ended. Tap to mark attendance.',
-          scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
-          notificationDetails: const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'period_end_channel',
-              'Period End Reminders',
-              channelDescription: 'Notifications to mark attendance when class ends',
-              importance: Importance.high,
-              priority: Priority.high,
-            ),
-          ),
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        );
+      // If current time is inside the lunch block, skip past lunch
+      if (currentMins >= lunchStartTimeMins && currentMins < lunchEndTimeMins) {
+        currentMins = lunchEndTimeMins;
       }
+      
+      // Check if the next period overlaps with lunch
+      final nextEnd = currentMins + periodDurationMins;
+      if (nextEnd > lunchStartTimeMins && currentMins < lunchStartTimeMins) {
+        currentMins = lunchEndTimeMins;
+      }
+
+      final periodEndMins = currentMins + periodDurationMins;
+
+      final scheduledTime = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        periodEndMins ~/ 60,
+        periodEndMins % 60,
+      );
+
+      currentMins = periodEndMins;
+
+      if (scheduledTime.isBefore(now)) continue;
+
+      // Cancel previous one with same ID first
+      try {
+        await _notificationsPlugin.cancel(id: 1000 + i);
+      } catch (_) {}
+
+      await _notificationsPlugin.zonedSchedule(
+        id: 1000 + i,
+        title: 'Period or Class $i Ended',
+        body: 'Your period or class $i has just ended. Tap to mark attendance.',
+        scheduledDate: tz.TZDateTime.from(scheduledTime, tz.local),
+        notificationDetails: const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'period_end_channel',
+            'Period or Class End Reminders',
+            channelDescription: 'Notifications to mark attendance when class ends',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      );
     }
   }
 

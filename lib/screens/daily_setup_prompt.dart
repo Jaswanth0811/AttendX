@@ -46,8 +46,8 @@ class _DailySetupPromptState extends State<DailySetupPrompt> {
         NotificationService().scheduleDailyPeriodEndReminders(
           startTimeMins: settings.collegeStartTimeMinutes,
           periodDurationMins: settings.periodDurationMinutes,
-          lunchDurationMins: settings.lunchBreakDurationMinutes,
-          lunchPeriodIdx: settings.lunchPeriodIndex,
+          lunchStartTimeMins: settings.lunchStartTimeMinutes,
+          lunchEndTimeMins: settings.lunchEndTimeMinutes,
           totalPeriodsToday: 0,
         );
       }
@@ -146,8 +146,8 @@ class _DailySetupPromptState extends State<DailySetupPrompt> {
                     await NotificationService().scheduleDailyPeriodEndReminders(
                       startTimeMins: settings.collegeStartTimeMinutes,
                       periodDurationMins: settings.periodDurationMinutes,
-                      lunchDurationMins: settings.lunchBreakDurationMinutes,
-                      lunchPeriodIdx: settings.lunchPeriodIndex,
+                      lunchStartTimeMins: settings.lunchStartTimeMinutes,
+                      lunchEndTimeMins: settings.lunchEndTimeMinutes,
                       totalPeriodsToday: defaultPeriodsToday,
                     );
                   },
@@ -173,16 +173,16 @@ class _DailySetupPromptState extends State<DailySetupPrompt> {
         return DailyOverrideSheet(
           initialStartMins: settings.collegeStartTimeMinutes,
           initialPeriodMins: settings.periodDurationMinutes,
-          initialLunchMins: settings.lunchBreakDurationMinutes,
-          initialLunchIndex: settings.lunchPeriodIndex,
+          initialLunchStartMins: settings.lunchStartTimeMinutes,
+          initialLunchEndMins: settings.lunchEndTimeMinutes,
           totalPeriods: totalPeriods,
-          onSave: (start, period, lunch, lunchIdx) async {
+          onSave: (start, period, lunchStart, lunchEnd) async {
             await settings.setLastPromptedDate(todayStr);
             await NotificationService().scheduleDailyPeriodEndReminders(
               startTimeMins: start,
               periodDurationMins: period,
-              lunchDurationMins: lunch,
-              lunchPeriodIdx: lunchIdx,
+              lunchStartTimeMins: lunchStart,
+              lunchEndTimeMins: lunchEnd,
               totalPeriodsToday: totalPeriods,
             );
           },
@@ -195,17 +195,17 @@ class _DailySetupPromptState extends State<DailySetupPrompt> {
 class DailyOverrideSheet extends StatefulWidget {
   final int initialStartMins;
   final int initialPeriodMins;
-  final int initialLunchMins;
-  final int initialLunchIndex;
+  final int initialLunchStartMins;
+  final int initialLunchEndMins;
   final int totalPeriods;
-  final Function(int start, int period, int lunch, int lunchIdx) onSave;
+  final Function(int start, int period, int lunchStart, int lunchEnd) onSave;
 
   const DailyOverrideSheet({
     super.key,
     required this.initialStartMins,
     required this.initialPeriodMins,
-    required this.initialLunchMins,
-    required this.initialLunchIndex,
+    required this.initialLunchStartMins,
+    required this.initialLunchEndMins,
     required this.totalPeriods,
     required this.onSave,
   });
@@ -217,24 +217,24 @@ class DailyOverrideSheet extends StatefulWidget {
 class _DailyOverrideSheetState extends State<DailyOverrideSheet> {
   late TextEditingController _startController;
   late TextEditingController _periodController;
-  late TextEditingController _lunchController;
-  late TextEditingController _lunchIndexController;
+  late TextEditingController _lunchStartController;
+  late TextEditingController _lunchEndController;
 
   @override
   void initState() {
     super.initState();
     _startController = TextEditingController(text: _formatMinsToTime(widget.initialStartMins));
     _periodController = TextEditingController(text: widget.initialPeriodMins.toString());
-    _lunchController = TextEditingController(text: widget.initialLunchMins.toString());
-    _lunchIndexController = TextEditingController(text: widget.initialLunchIndex.toString());
+    _lunchStartController = TextEditingController(text: _formatMinsToTime(widget.initialLunchStartMins));
+    _lunchEndController = TextEditingController(text: _formatMinsToTime(widget.initialLunchEndMins));
   }
 
   @override
   void dispose() {
     _startController.dispose();
     _periodController.dispose();
-    _lunchController.dispose();
-    _lunchIndexController.dispose();
+    _lunchStartController.dispose();
+    _lunchEndController.dispose();
     super.dispose();
   }
 
@@ -252,8 +252,17 @@ class _DailyOverrideSheetState extends State<DailyOverrideSheet> {
     return h * 60 + m;
   }
 
-  Future<void> _selectTime(BuildContext context) async {
-    final parts = _startController.text.split(':');
+  Future<void> _selectTime(BuildContext context, String field) async {
+    TextEditingController controller;
+    if (field == 'start') {
+      controller = _startController;
+    } else if (field == 'lunchStart') {
+      controller = _lunchStartController;
+    } else {
+      controller = _lunchEndController;
+    }
+
+    final parts = controller.text.split(':');
     final initialHour = parts.length == 2 ? (int.tryParse(parts[0]) ?? 9) : 9;
     final initialMinute = parts.length == 2 ? (int.tryParse(parts[1]) ?? 0) : 0;
 
@@ -265,7 +274,7 @@ class _DailyOverrideSheetState extends State<DailyOverrideSheet> {
     if (picked != null) {
       final formatted = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
       setState(() {
-        _startController.text = formatted;
+        controller.text = formatted;
       });
     }
   }
@@ -307,7 +316,7 @@ class _DailyOverrideSheetState extends State<DailyOverrideSheet> {
                 child: TextField(
                   controller: _startController,
                   readOnly: true,
-                  onTap: () => _selectTime(context),
+                  onTap: () => _selectTime(context, 'start'),
                   decoration: const InputDecoration(
                     labelText: 'Start Time',
                     border: OutlineInputBorder(),
@@ -320,7 +329,7 @@ class _DailyOverrideSheetState extends State<DailyOverrideSheet> {
                 child: TextField(
                   controller: _periodController,
                   decoration: const InputDecoration(
-                    labelText: 'Period (mins)',
+                    labelText: 'Period or Class (mins)',
                     border: OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.number,
@@ -333,23 +342,27 @@ class _DailyOverrideSheetState extends State<DailyOverrideSheet> {
             children: [
               Expanded(
                 child: TextField(
-                  controller: _lunchController,
+                  controller: _lunchStartController,
+                  readOnly: true,
+                  onTap: () => _selectTime(context, 'lunchStart'),
                   decoration: const InputDecoration(
-                    labelText: 'Lunch (mins)',
+                    labelText: 'Lunch Start Time',
                     border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.access_time),
                   ),
-                  keyboardType: TextInputType.number,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: TextField(
-                  controller: _lunchIndexController,
+                  controller: _lunchEndController,
+                  readOnly: true,
+                  onTap: () => _selectTime(context, 'lunchEnd'),
                   decoration: const InputDecoration(
-                    labelText: 'Lunch after Period #',
+                    labelText: 'Lunch End Time',
                     border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.access_time),
                   ),
-                  keyboardType: TextInputType.number,
                 ),
               ),
             ],
@@ -362,10 +375,10 @@ class _DailyOverrideSheetState extends State<DailyOverrideSheet> {
               onPressed: () {
                 final start = _parseTimeToMins(_startController.text);
                 final period = int.tryParse(_periodController.text) ?? 50;
-                final lunch = int.tryParse(_lunchController.text) ?? 45;
-                final lunchIdx = int.tryParse(_lunchIndexController.text) ?? 4;
+                final lunchStart = _parseTimeToMins(_lunchStartController.text);
+                final lunchEnd = _parseTimeToMins(_lunchEndController.text);
 
-                widget.onSave(start, period, lunch, lunchIdx);
+                widget.onSave(start, period, lunchStart, lunchEnd);
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(

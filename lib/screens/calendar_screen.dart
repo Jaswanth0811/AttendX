@@ -85,7 +85,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final rawSlots = attendance.getSlotsForDate(dayStartMillis);
     final List<TimetableSlot> slots = [];
     for (var slot in rawSlots) {
-      slots.addAll(slot.expandSlots(settings.periodDurationMinutes));
+      slots.addAll(slot.expandSlots(
+        settings.periodDurationMinutes,
+        collegeStartMins: settings.collegeStartTimeMinutes,
+        lunchStartMins: settings.lunchStartTimeMinutes,
+        lunchEndMins: settings.lunchEndTimeMinutes,
+      ));
     }
     
     // Get all attendance records for this date

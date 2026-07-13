@@ -124,7 +124,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     final rawTodaysSlots = attendance.getSlotsForDate(todayStartMillis);
     final List<TimetableSlot> todaysSlots = [];
     for (var slot in rawTodaysSlots) {
-      todaysSlots.addAll(slot.expandSlots(settings.periodDurationMinutes));
+      todaysSlots.addAll(slot.expandSlots(
+        settings.periodDurationMinutes,
+        collegeStartMins: settings.collegeStartTimeMinutes,
+        lunchStartMins: settings.lunchStartTimeMinutes,
+        lunchEndMins: settings.lunchEndTimeMinutes,
+      ));
     }
     todaysSlots.sort((a, b) => a.periodNumber.compareTo(b.periodNumber));
 
@@ -519,7 +524,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                             (s) => s.id == slot.subjectId,
                             orElse: () => Subject(
                               id: -1,
-                              name: 'Free Period',
+                              name: 'Free Period or Class',
                               code: 'FREE',
                               facultyName: '',
                               colorHex: '#EEEEEE',
@@ -547,7 +552,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      'Period ${slot.periodNumber}',
+                                      'Period or Class ${slot.periodNumber}',
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: subjectColor,
