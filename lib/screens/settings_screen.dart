@@ -1205,13 +1205,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showAddSpecialScheduleDialog(BuildContext context, AttendanceProvider attendance) {
     final theme = Theme.of(context);
     final nameController = TextEditingController();
-    String selectedType = 'Course';
+    final typeController = TextEditingController(text: 'Course');
+    final otherClassController = TextEditingController();
+    String classSelection = 'Subject';
     int? selectedSubjectId;
     DateTimeRange? dateRange;
     TimeOfDay startTime = const TimeOfDay(hour: 9, minute: 0);
     TimeOfDay endTime = const TimeOfDay(hour: 16, minute: 0);
-
-    final types = ['Course', 'Workshop', 'Exam', 'Event', 'Other'];
 
     showModalBottomSheet(
       context: context,
@@ -1266,7 +1266,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         controller: nameController,
                         decoration: InputDecoration(
                           labelText: 'Schedule Name',
-                          hintText: 'e.g., Skill Enhancement Course',
+                          hintText: 'e.g., TCS NQT Mock Test',
                           prefixIcon: const Icon(Icons.label_outline),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                           filled: true,
@@ -1275,38 +1275,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Schedule Type Dropdown
-                      DropdownButtonFormField<String>(
-                        value: selectedType,
+                      // Schedule Type TextField
+                      TextField(
+                        controller: typeController,
                         decoration: InputDecoration(
                           labelText: 'Schedule Type',
+                          hintText: 'e.g., Workshop, Exam, Course',
                           prefixIcon: const Icon(Icons.category_outlined),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                           filled: true,
                           fillColor: theme.colorScheme.surfaceContainer,
                         ),
-                        items: types.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                        onChanged: (val) => setState(() => selectedType = val!),
                       ),
                       const SizedBox(height: 16),
 
-                      // Subject Dropdown
-                      DropdownButtonFormField<int>(
-                        value: selectedSubjectId,
+                      // What Class Dropdown
+                      DropdownButtonFormField<String>(
+                        value: classSelection,
                         decoration: InputDecoration(
-                          labelText: 'Subject',
-                          prefixIcon: const Icon(Icons.book_outlined),
+                          labelText: 'What Class',
+                          prefixIcon: const Icon(Icons.class_outlined),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                           filled: true,
                           fillColor: theme.colorScheme.surfaceContainer,
                         ),
-                        items: attendance.subjects.map((s) => DropdownMenuItem(
-                          value: s.id,
-                          child: Text(s.name, overflow: TextOverflow.ellipsis),
-                        )).toList(),
-                        onChanged: (val) => setState(() => selectedSubjectId = val),
-                        hint: const Text('Select subject'),
+                        items: const [
+                          DropdownMenuItem(value: 'Subject', child: Text('Subject')),
+                          DropdownMenuItem(value: 'Other', child: Text('Other Class or Period')),
+                        ],
+                        onChanged: (val) => setState(() => classSelection = val!),
                       ),
+                      
+                      if (classSelection == 'Subject') ...[
+                        const SizedBox(height: 16),
+                        // Which Subject Dropdown
+                        DropdownButtonFormField<int>(
+                          value: selectedSubjectId,
+                          decoration: InputDecoration(
+                            labelText: 'Which Subject',
+                            prefixIcon: const Icon(Icons.book_outlined),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                            filled: true,
+                            fillColor: theme.colorScheme.surfaceContainer,
+                          ),
+                          items: attendance.subjects.map((s) => DropdownMenuItem(
+                            value: s.id,
+                            child: Text(s.name, overflow: TextOverflow.ellipsis),
+                          )).toList(),
+                          onChanged: (val) => setState(() => selectedSubjectId = val),
+                          hint: const Text('Select subject'),
+                        ),
+                      ] else ...[
+                        const SizedBox(height: 16),
+                        // Tell me TextField
+                        TextField(
+                          controller: otherClassController,
+                          decoration: InputDecoration(
+                            labelText: 'Tell me',
+                            hintText: 'What?',
+                            prefixIcon: const Icon(Icons.question_mark_outlined),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                            filled: true,
+                            fillColor: theme.colorScheme.surfaceContainer,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
 
                       // Date Range
@@ -1407,12 +1440,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               );
                               return;
                             }
-                            if (selectedSubjectId == null) {
+                            if (typeController.text.trim().isEmpty) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Please select a subject'), backgroundColor: Colors.orange),
+                                const SnackBar(content: Text('Please enter a schedule type'), backgroundColor: Colors.orange),
                               );
                               return;
                             }
+                            
+                            int finalSubjectId;
+                            if (classSelection == 'Subject') {
+                              if (selectedSubjectId == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Please select a subject'), backgroundColor: Colors.orange),
+                                );
+                                return;
+                              }
+                              finalSubjectId = selectedSubjectId!;
+                            } else {
+                              final customName = otherClassController.text.trim();
+                              if (customName.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Please type the name of the class/period'), backgroundColor: Colors.orange),
+                                );
+                                return;
+                              }
+
+                              // Check if a subject with this name already exists
+                              final existingSubject = attendance.subjects.firstWhere(
+                                (s) => s.name.toLowerCase() == customName.toLowerCase(),
+                                orElse: () => Subject(id: -2, name: '', code: '', facultyName: '', colorHex: '', createdAt: 0),
+                              );
+
+                              if (existingSubject.id != -2) {
+                                finalSubjectId = existingSubject.id!;
+                              } else {
+                                final newSubject = Subject(
+                                  name: customName,
+                                  code: customName.length > 4 ? customName.substring(0, 4).toUpperCase() : customName.toUpperCase(),
+                                  facultyName: '',
+                                  colorHex: '#9E9E9E',
+                                  createdAt: DateTime.now().millisecondsSinceEpoch,
+                                );
+                                finalSubjectId = await attendance.addSubject(newSubject);
+                              }
+                            }
+
                             if (dateRange == null) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(content: Text('Please select a date range'), backgroundColor: Colors.orange),
@@ -1427,8 +1499,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                             final ss = SpecialSchedule(
                               name: nameController.text.trim(),
-                              scheduleType: selectedType,
-                              subjectId: selectedSubjectId!,
+                              scheduleType: typeController.text.trim(),
+                              subjectId: finalSubjectId,
                               startDateMillis: startDateMillis,
                               endDateMillis: endDateMillis,
                               dailyStartTime: startTimeStr,

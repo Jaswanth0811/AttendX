@@ -174,10 +174,11 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
   }
 
   // --- Subjects ---
-  Future<void> addSubject(Subject subject) async {
-    await _db.insertSubject(subject);
+  Future<int> addSubject(Subject subject) async {
+    final id = await _db.insertSubject(subject);
     await loadData();
     _triggerAutoBackup();
+    return id;
   }
 
   Future<void> updateSubject(Subject subject) async {
