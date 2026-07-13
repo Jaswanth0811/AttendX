@@ -88,32 +88,45 @@ class NotificationService {
         activeSchedule = specialSchedules.firstWhere((ss) => ss.isActiveForDate(midnightDateMillis));
       } catch (_) {}
 
-      final List<TimetableSlot> rawDaySlots;
-      if (activeSchedule != null) {
-        rawDaySlots = _generateSlotsFromSpecialSchedule(activeSchedule);
+      // Check if we have a special override (day-swap) for this date
+      final special = specialOverrides.firstWhere(
+        (st) => st.dateMillis == midnightDateMillis,
+        orElse: () => SpecialTimetable(dateMillis: 0, targetDayOfWeek: -1),
+      );
+      
+      final int targetDayOfWeek;
+      if (special.targetDayOfWeek != -1) {
+        targetDayOfWeek = special.targetDayOfWeek;
       } else {
-        // Check if we have a special override (day-swap) for this date
-        final special = specialOverrides.firstWhere(
-          (st) => st.dateMillis == midnightDateMillis,
-          orElse: () => SpecialTimetable(dateMillis: 0, targetDayOfWeek: -1),
-        );
-        
-        final int targetDayOfWeek;
-        if (special.targetDayOfWeek != -1) {
-          if (special.targetDayOfWeek == 0) {
-            // Holiday, no classes today!
-            continue;
-          }
-          targetDayOfWeek = special.targetDayOfWeek;
-        } else {
-          // Regular day, skip Sunday by default
-          if (targetDate.weekday == DateTime.sunday) {
-            continue;
-          }
-          targetDayOfWeek = targetDate.weekday;
-        }
+        targetDayOfWeek = targetDate.weekday;
+      }
 
-        rawDaySlots = slots.where((s) => s.dayOfWeek == targetDayOfWeek).toList();
+      final List<TimetableSlot> rawDaySlots = [];
+      if (activeSchedule != null) {
+        // Add special schedule slots
+        rawDaySlots.addAll(_generateSlotsFromSpecialSchedule(activeSchedule));
+        
+        // Add regular slots that do not overlap
+        if (targetDayOfWeek != 0 && targetDate.weekday != DateTime.sunday) {
+          final regularSlots = slots.where((s) => s.dayOfWeek == targetDayOfWeek).toList();
+          final specialStart = _parseTimeToMinutes(activeSchedule.dailyStartTime);
+          final specialEnd = _parseTimeToMinutes(activeSchedule.dailyEndTime);
+          
+          for (var s in regularSlots) {
+             final regStart = _parseTimeToMinutes(s.startTime);
+             final regEnd = _parseTimeToMinutes(s.endTime);
+             final overlaps = regEnd > specialStart && regStart < specialEnd;
+             if (!overlaps) {
+               rawDaySlots.add(s);
+             }
+          }
+        }
+      } else {
+        if (targetDayOfWeek == 0 || targetDate.weekday == DateTime.sunday) {
+          // Holiday, no classes
+        } else {
+          rawDaySlots.addAll(slots.where((s) => s.dayOfWeek == targetDayOfWeek));
+        }
       }
 
       final List<TimetableSlot> daySlots = [];

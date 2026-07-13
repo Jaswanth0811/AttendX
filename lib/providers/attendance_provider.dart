@@ -135,6 +135,10 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
         if (driveTime.isAfter(localTime.add(const Duration(seconds: 2)))) {
           await driveService.restoreDatabase(silentOnly: true);
           
+          if (SettingsProvider.instance != null) {
+            await SettingsProvider.instance!.reloadSettings();
+          }
+
           _activeSemester = await _db.getActiveSemester();
           _subjects = await _db.getSubjects();
           _timetableSlots = await _db.getTimetableSlots();
@@ -412,14 +416,7 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
   List<TimetableSlot> getSlotsForDate(int dateMillis) {
     final date = DateTime.fromMillisecondsSinceEpoch(dateMillis);
     
-    // 1. Check if a Special Schedule (temporary course) is active for this date
-    final activeSchedule = getSpecialScheduleForDate(dateMillis);
-    if (activeSchedule != null) {
-      // Generate virtual slots from the special schedule's daily timing
-      return _generateSlotsFromSpecialSchedule(activeSchedule);
-    }
-    
-    // 2. Check if a day-swap override exists
+    // Check if a day-swap override exists
     final special = getSpecialTimetableForDate(dateMillis);
     
     final int dayOfWeek;
@@ -431,8 +428,39 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
     } else {
       dayOfWeek = date.weekday;
     }
+
+    final List<TimetableSlot> rawSlots = [];
     
-    return _timetableSlots.where((s) => s.dayOfWeek == dayOfWeek).toList();
+    // 1. Check if a Special Schedule (temporary course) is active for this date
+    final activeSchedule = getSpecialScheduleForDate(dateMillis);
+    if (activeSchedule != null) {
+      // Add special schedule slots
+      rawSlots.addAll(_generateSlotsFromSpecialSchedule(activeSchedule));
+      
+      // Add regular college slots that do not overlap with the special schedule
+      if (dayOfWeek != 0 && date.weekday != DateTime.sunday) {
+        final regularSlots = _timetableSlots.where((s) => s.dayOfWeek == dayOfWeek).toList();
+        final specialStart = _parseTimeToMinutes(activeSchedule.dailyStartTime);
+        final specialEnd = _parseTimeToMinutes(activeSchedule.dailyEndTime);
+        
+        for (var s in regularSlots) {
+          final regStart = _parseTimeToMinutes(s.startTime);
+          final regEnd = _parseTimeToMinutes(s.endTime);
+          final overlaps = regEnd > specialStart && regStart < specialEnd;
+          if (!overlaps) {
+            rawSlots.add(s);
+          }
+        }
+      }
+    } else {
+      if (dayOfWeek == 0 || date.weekday == DateTime.sunday) {
+        // Holiday, no classes
+      } else {
+        rawSlots.addAll(_timetableSlots.where((s) => s.dayOfWeek == dayOfWeek));
+      }
+    }
+    
+    return rawSlots;
   }
 
   // --- Special Schedules ---

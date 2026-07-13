@@ -780,6 +780,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: () {
                   Navigator.of(context).pop();
                   Provider.of<AttendanceProvider>(context, listen: false).loadData();
+                  Provider.of<SettingsProvider>(context, listen: false).reloadSettings();
                 },
                 child: const Text('OK'),
               ),

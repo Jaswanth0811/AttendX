@@ -26,7 +26,7 @@ class DatabaseHelper {
     String path = join(await getDatabasesPath(), 'attendx_database');
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -123,6 +123,13 @@ class DatabaseHelper {
         FOREIGN KEY (subjectId) REFERENCES subjects (id) ON DELETE CASCADE
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -160,6 +167,14 @@ class DatabaseHelper {
           dailyStartTime TEXT NOT NULL,
           dailyEndTime TEXT NOT NULL,
           FOREIGN KEY (subjectId) REFERENCES subjects (id) ON DELETE CASCADE
+        )
+      ''');
+    }
+    if (oldVersion < 5) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS app_settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
         )
       ''');
     }
@@ -341,6 +356,41 @@ class DatabaseHelper {
     if (_database != null) {
       await _database!.close();
       _database = null;
+    }
+  }
+
+  // --- Settings Sync Support ---
+  Future<void> saveSetting(String key, String value) async {
+    final db = await database;
+    await db.insert(
+      'app_settings',
+      {'key': key, 'value': value},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String?> getSetting(String key) async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'app_settings',
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+    if (maps.isEmpty) return null;
+    return maps.first['value'] as String;
+  }
+
+  Future<Map<String, String>> getAllSettings() async {
+    final db = await database;
+    try {
+      final List<Map<String, dynamic>> maps = await db.query('app_settings');
+      final Map<String, String> result = {};
+      for (var m in maps) {
+        result[m['key'] as String] = m['value'] as String;
+      }
+      return result;
+    } catch (_) {
+      return {};
     }
   }
 }
