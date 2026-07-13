@@ -29,7 +29,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   GoogleSignInAccount? _googleUser;
-  String _appVersion = '1.0.8';
+  String _appVersion = '1.1.3';
 
   @override
   void initState() {
