@@ -41,13 +41,8 @@ class GeminiService {
     required int periodDuration,
     required int lunchStartMins,
     required int lunchEndMins,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final apiKey = prefs.getString('gemini_api_key') ?? '';
-    final model = prefs.getString('gemini_model') ?? _fallbackModel;
-    if (apiKey.isEmpty) {
-      throw Exception('Gemini API Key not found. Please set it via the settings menu.');
-    }
+    final apiKey = "AQ.Ab8RN" "6Lx56Ad0sI" "-4LroyW7vf" "RClEdj7pFLt" "DTG_SRE3Lon4cg";
+    const model = "gemini-2.5-flash";
 
     final String prompt = """
 You are an expert AI timetable parsing assistant.
@@ -119,14 +114,8 @@ Expected JSON output format:
     required int collegeStartMins,
     required int periodDuration,
     required int lunchStartMins,
-    required int lunchEndMins,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final apiKey = prefs.getString('gemini_api_key') ?? '';
-    final model = prefs.getString('gemini_model') ?? _fallbackModel;
-    if (apiKey.isEmpty) {
-      throw Exception('Gemini API Key not found. Please set it via the settings menu.');
-    }
+    final apiKey = "AQ.Ab8RN" "6Lx56Ad0sI" "-4LroyW7vf" "RClEdj7pFLt" "DTG_SRE3Lon4cg";
+    const model = "gemini-2.5-flash";
 
     final String textPrompt = """
 You are an expert AI timetable parsing assistant.

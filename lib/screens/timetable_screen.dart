@@ -84,33 +84,19 @@ class _TimetableScreenState extends State<TimetableScreen> {
           // Import Timetable button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showImportOptions(context),
-                    icon: const Icon(Icons.cloud_upload_outlined),
-                    label: const Text('Import Timetable', style: TextStyle(fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                      foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _showImportOptions(context),
+                icon: const Icon(Icons.cloud_upload_outlined),
+                label: const Text('Import Timetable', style: TextStyle(fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.more_vert),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    padding: const EdgeInsets.all(12),
-                  ),
-                  onPressed: () => _showApiKeyDialog(context),
-                  tooltip: 'AI Model Settings',
-                ),
-              ],
+              ),
             ),
           ),
 
@@ -494,301 +480,71 @@ class _TimetableScreenState extends State<TimetableScreen> {
   final TimetableParserService _parserService = TimetableParserService();
   final GeminiService _geminiService = GeminiService();
 
-  Future<void> _checkGeminiKey(BuildContext context, VoidCallback onKeyReady) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = prefs.getString('gemini_api_key') ?? '';
-    if (key.isNotEmpty) {
-      onKeyReady();
-      return;
-    }
 
-    if (!context.mounted) return;
-
-    // Show API settings dialog so they can configure and verify it
-    await _showApiKeyDialog(context);
-    final keyAfter = prefs.getString('gemini_api_key') ?? '';
-    if (keyAfter.isNotEmpty) {
-      onKeyReady();
-    }
-  }
-
-  Future<void> _showApiKeyDialog(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    final String currentKey = prefs.getString('gemini_api_key') ?? '';
-    final String currentModel = prefs.getString('gemini_model') ?? 'gemini-2.5-flash';
-
-    final keyController = TextEditingController(text: currentKey);
-    bool isValidated = currentKey.isNotEmpty;
-    bool isValidating = false;
-    List<String> availableModels = [currentModel];
-    if (!availableModels.contains('gemini-2.5-flash')) {
-      availableModels.addAll(['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']);
-      availableModels = availableModels.toSet().toList();
-    }
-    String selectedModel = currentModel;
-    String validationError = '';
-
-    if (!context.mounted) return;
-
-    await showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Text('Google Gemini API Settings', style: TextStyle(fontWeight: FontWeight.bold)),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'To import timetables using AI, please provide a Google AI Studio API Key.',
-                    style: TextStyle(fontSize: 13, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 10),
-                  
-                  // Clear Hyperlink instruction
-                  InkWell(
-                    onTap: () => _launchUrl('https://aistudio.google.com/app/apikey'),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.open_in_new, size: 14, color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Get a Free API Key here ↗',
-                          style: TextStyle(
-                            fontSize: 13, 
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.primary,
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  
-                  // Text field
-                  TextField(
-                    controller: keyController,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      labelText: 'Gemini API Key',
-                      hintText: 'AIzaSy...',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      prefixIcon: const Icon(Icons.vpn_key_outlined),
-                    ),
-                    onChanged: (text) {
-                      setDialogState(() {
-                        isValidated = false;
-                        validationError = '';
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Validation State and Action Button
-                  if (isValidating)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(8.0),
-                        child: CircularProgressIndicator(),
-                      ),
-                    )
-                  else ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.verified_user_outlined),
-                        label: const Text('Verify API Connection'),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        onPressed: () async {
-                          final key = keyController.text.trim();
-                          if (key.isEmpty) {
-                            setDialogState(() {
-                              validationError = 'API key cannot be empty';
-                            });
-                            return;
-                          }
-
-                          setDialogState(() {
-                            isValidating = true;
-                            validationError = '';
-                          });
-
-                          try {
-                            final models = await _geminiService.verifyKeyAndGetModels(key);
-                            setDialogState(() {
-                              isValidating = false;
-                              isValidated = true;
-                              availableModels = models;
-                              if (!availableModels.contains(selectedModel)) {
-                                selectedModel = availableModels.first;
-                              }
-                            });
-                          } catch (e) {
-                            setDialogState(() {
-                              isValidating = false;
-                              isValidated = false;
-                              validationError = e.toString().replaceAll('Exception: ', '');
-                            });
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-
-                  if (validationError.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      validationError,
-                      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
-                    ),
-                  ],
-
-                  if (isValidated) ...[
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        const Icon(Icons.check_circle_outline, color: Colors.green, size: 18),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Connection Verified!',
-                          style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Model Dropdown Selection
-                    DropdownButtonFormField<String>(
-                      value: selectedModel,
-                      decoration: InputDecoration(
-                        labelText: 'Select Gemini Model',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      ),
-                      items: availableModels.map((m) => DropdownMenuItem(
-                        value: m,
-                        child: Text(m),
-                      )).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setDialogState(() => selectedModel = val);
-                        }
-                      },
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogCtx),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  final key = keyController.text.trim();
-                  if (key.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Please enter and verify API key first')),
-                    );
-                    return;
-                  }
-                  await prefs.setString('gemini_api_key', key);
-                  await prefs.setString('gemini_model', selectedModel);
-                  if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('✅ Settings Saved: using $selectedModel'), backgroundColor: Colors.green),
-                  );
-                },
-                child: const Text('Save Settings'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Future<void> _launchUrl(String urlString) async {
-    final Uri url = Uri.parse(urlString);
-    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-      throw Exception('Could not launch $url');
-    }
-  }
 
   void _showImportOptions(BuildContext context) {
-    _checkGeminiKey(context, () {
-      showModalBottomSheet(
-        context: context,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-        builder: (sheetCtx) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.deepPurple[50],
-                    child: const Icon(Icons.image_outlined, color: Colors.deepPurple),
-                  ),
-                  title: const Text('Import from Image', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Capture photo or upload from Gallery'),
-                  onTap: () {
-                    Navigator.pop(sheetCtx);
-                    _importFromImage(context);
-                  },
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.deepPurple[50],
+                  child: const Icon(Icons.image_outlined, color: Colors.deepPurple),
                 ),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.red[50],
-                    child: Icon(Icons.picture_as_pdf_outlined, color: Colors.red[700]),
-                  ),
-                  title: const Text('Import from PDF', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Select a scanned or digital PDF file'),
-                  onTap: () {
-                    Navigator.pop(sheetCtx);
-                    _importFromPdf(context);
-                  },
+                title: const Text('Import from Image', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Capture photo or upload from Gallery'),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _importFromImage(context);
+                },
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.red[50],
+                  child: Icon(Icons.picture_as_pdf_outlined, color: Colors.red[700]),
                 ),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.green[50],
-                    child: Icon(Icons.table_chart_outlined, color: Colors.green[700]),
-                  ),
-                  title: const Text('Import from Excel', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Select a .xlsx or .xls file'),
-                  onTap: () {
-                    Navigator.pop(sheetCtx);
-                    _importFromExcel(context);
-                  },
+                title: const Text('Import from PDF', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Select a scanned or digital PDF file'),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _importFromPdf(context);
+                },
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.green[50],
+                  child: Icon(Icons.table_chart_outlined, color: Colors.green[700]),
                 ),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.blue[50],
-                    child: Icon(Icons.description_outlined, color: Colors.blue[700]),
-                  ),
-                  title: const Text('Import from CSV', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Select a standard CSV file'),
-                  onTap: () {
-                    Navigator.pop(sheetCtx);
-                    _importFromCsv(context);
-                  },
+                title: const Text('Import from Excel', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Select a .xlsx or .xls file'),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _importFromExcel(context);
+                },
+              ),
+              ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.blue[50],
+                  child: Icon(Icons.description_outlined, color: Colors.blue[700]),
                 ),
-              ],
-            ),
+                title: const Text('Import from CSV', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Select a standard CSV file'),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _importFromCsv(context);
+                },
+              ),
+            ],
           ),
         ),
-      );
-    });
+      ),
+    );
   }
 
   Future<void> _processImport({
