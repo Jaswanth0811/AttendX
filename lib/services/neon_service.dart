@@ -6,15 +6,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import '../database/database_helper.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'drive_service.dart';
 
 class NeonService {
   static final NeonService _instance = NeonService._internal();
   factory NeonService() => _instance;
   NeonService._internal();
 
-  static final GoogleSignIn googleSignIn = GoogleSignIn(
-    scopes: ['email'],
-  );
+  static GoogleSignIn get googleSignIn => DriveService.googleSignIn;
 
   static final String _host = "ep-divine-bread-azcjxwhb.c-3.ap-southeast-1.aws.neon.tech";
   static final String _username = "neondb_owner";

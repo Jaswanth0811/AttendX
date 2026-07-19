@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'dart:io';
 import '../services/neon_service.dart';
+import '../services/drive_service.dart';
 import '../database/database_helper.dart';
 import '../providers/attendance_provider.dart';
 import '../models/subject.dart';
@@ -30,12 +31,13 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   GoogleSignInAccount? _googleUser;
-  String _appVersion = '1.1.3';
+  String _appVersion = '1.1.4';
   bool _testingConnection = false;
   bool _neonConnected = false;
   String _lastBackupStatus = 'None';
   String _lastBackupTime = 'Never';
   String _localDbSize = 'Unknown';
+  String _lastDriveBackupTime = 'Never';
 
   @override
   @override
@@ -71,17 +73,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
 
+    final driveTimeStr = prefs.getString('last_synced_drive_time') ?? '';
+    String formattedDriveTime = 'Never';
+    if (driveTimeStr.isNotEmpty) {
+      final parsed = DateTime.tryParse(driveTimeStr);
+      if (parsed != null) {
+        formattedDriveTime = DateFormat('yyyy-MM-dd hh:mm a').format(parsed.toLocal());
+      }
+    }
+
     if (mounted) {
       setState(() {
         _lastBackupStatus = status;
         _lastBackupTime = formattedTime;
         _localDbSize = dbSizeStr;
+        _lastDriveBackupTime = formattedDriveTime;
       });
     }
 
-    setState(() {
-      _testingConnection = true;
-    });
+    if (mounted) {
+      setState(() {
+        _testingConnection = true;
+      });
+    }
     final isConnected = await NeonService().testConnection();
     if (mounted) {
       setState(() {
@@ -295,6 +309,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: () => _restoreFromNeon(context),
                 ),
                 const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.cloud_queue, color: Colors.green),
+                  title: const Text('Backup to Google Drive (Fallback)'),
+                  subtitle: const Text('Secondary fallback cloud backup'),
+                  onTap: () => _backupToDrive(context),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.settings_backup_restore, color: Colors.green),
+                  title: const Text('Restore from Google Drive (Fallback)'),
+                  subtitle: const Text('Restore from secondary fallback backup'),
+                  onTap: () => _restoreFromDrive(context),
+                ),
+                const Divider(height: 1),
                 SwitchListTile.adaptive(
                   secondary: const Icon(Icons.sync, color: Colors.blue),
                   title: const Text('Auto-Sync (Cloud Database)'),
@@ -414,6 +442,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       const Text('Local Database Size:', style: TextStyle(fontWeight: FontWeight.w600)),
                       Text(_localDbSize),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Last Google Drive Sync:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      Text(_lastDriveBackupTime),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -882,6 +918,150 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SnackBar(content: Text('Failed to restore: $e')),
         );
       }
+    }
+  }
+
+  // --- Google Drive Backup & Restore (Fallback) ---
+  Future<void> _backupToDrive(BuildContext context) async {
+    if (_googleUser == null) {
+      await _signInWithGoogle();
+      if (_googleUser == null) return;
+    }
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Uploading database to Google Drive...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final driveService = DriveService();
+      final uploadedTime = await driveService.backupDatabase();
+      
+      if (context.mounted) {
+        Navigator.pop(context); // Pop loading dialog
+        if (uploadedTime != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_synced_drive_time', uploadedTime.toIso8601String());
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backed up to Google Drive successfully!'), backgroundColor: Colors.green),
+        );
+      }
+      _loadBackupDetails();
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Pop loading dialog
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Backup Failed'),
+            content: Text('Could not backup to Google Drive. Error: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      _loadBackupDetails();
+    }
+  }
+
+  Future<void> _restoreFromDrive(BuildContext context) async {
+    if (_googleUser == null) {
+      await _signInWithGoogle();
+      if (_googleUser == null) return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore Data'),
+        content: const Text(
+          'This will overwrite your local database with the database stored in Google Drive. '
+          'Any unsaved changes on this device will be lost. Proceed?'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Restoring database from Google Drive...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final driveService = DriveService();
+      final restoredTime = await driveService.restoreDatabase();
+      
+      if (context.mounted) {
+        Navigator.pop(context); // Pop loading dialog
+        if (restoredTime != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_synced_drive_time', restoredTime.toIso8601String());
+        }
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Restore Complete'),
+            content: const Text('Data restored from Google Drive successfully.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Provider.of<AttendanceProvider>(context, listen: false).loadData();
+                  Provider.of<SettingsProvider>(context, listen: false).reloadSettings();
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      _loadBackupDetails();
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Pop loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to restore from Drive: $e')),
+        );
+      }
+      _loadBackupDetails();
     }
   }
 
