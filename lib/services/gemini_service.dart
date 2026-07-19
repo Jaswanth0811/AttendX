@@ -41,6 +41,7 @@ class GeminiService {
     required int periodDuration,
     required int lunchStartMins,
     required int lunchEndMins,
+  }) async {
     final apiKey = "AQ.Ab8RN" "6Lx56Ad0sI" "-4LroyW7vf" "RClEdj7pFLt" "DTG_SRE3Lon4cg";
     const model = "gemini-2.5-flash";
 
@@ -114,6 +115,8 @@ Expected JSON output format:
     required int collegeStartMins,
     required int periodDuration,
     required int lunchStartMins,
+    required int lunchEndMins,
+  }) async {
     final apiKey = "AQ.Ab8RN" "6Lx56Ad0sI" "-4LroyW7vf" "RClEdj7pFLt" "DTG_SRE3Lon4cg";
     const model = "gemini-2.5-flash";
 

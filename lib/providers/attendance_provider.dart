@@ -16,7 +16,7 @@ import '../models/special_timetable.dart';
 import '../models/special_schedule.dart';
 import '../database/database_helper.dart';
 import '../services/notification_service.dart';
-import '../services/drive_service.dart';
+import '../services/neon_service.dart';
 
 import '../providers/settings_provider.dart';
 
@@ -70,7 +70,7 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
     if (autoSyncChanged) {
       _syncTimer?.cancel();
       if (_autoSync) {
-        _syncTimer = Timer.periodic(const Duration(seconds: 5), (_) => _performPeriodicSync());
+        _syncTimer = Timer.periodic(const Duration(hours: 2), (_) => _performPeriodicSync());
         _performPeriodicSync();
       }
     }
@@ -119,7 +119,7 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
 
     _syncTimer?.cancel();
     if (_autoSync) {
-      _syncTimer = Timer.periodic(const Duration(seconds: 5), (_) => _performPeriodicSync());
+      _syncTimer = Timer.periodic(const Duration(hours: 2), (_) => _performPeriodicSync());
       _performPeriodicSync();
     }
   }
@@ -129,7 +129,7 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _syncTimer?.cancel();
       if (_autoSync) {
-        _syncTimer = Timer.periodic(const Duration(seconds: 5), (_) => _performPeriodicSync());
+        _syncTimer = Timer.periodic(const Duration(hours: 2), (_) => _performPeriodicSync());
         _performPeriodicSync();
       }
     } else if (state == AppLifecycleState.paused) {
@@ -149,12 +149,12 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
 
     if (_hasUnsavedChanges) {
       try {
-        debugPrint("Periodic sync: Uploading local changes to Drive...");
-        final uploadedTime = await DriveService().backupDatabase(silentOnly: true);
+        debugPrint("Periodic sync: Uploading local changes to Neon Postgres...");
+        final uploadedTime = await NeonService().backupDatabase();
         if (uploadedTime != null) {
           _hasUnsavedChanges = false;
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('last_synced_drive_time', uploadedTime.toIso8601String());
+          await prefs.setString('last_synced_db_time', uploadedTime.toIso8601String());
           debugPrint("Periodic sync: Upload complete. Synced timestamp set to $uploadedTime");
         }
       } catch (e) {
@@ -162,29 +162,29 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
       }
     } else {
       try {
-        final driveService = DriveService();
-        final driveTime = await driveService.getBackupModifiedTime();
-        if (driveTime == null) return;
+        final neonService = NeonService();
+        final remoteTime = await neonService.getBackupModifiedTime();
+        if (remoteTime == null) return;
 
         final prefs = await SharedPreferences.getInstance();
-        final lastSyncedStr = prefs.getString('last_synced_drive_time') ?? '';
+        final lastSyncedStr = prefs.getString('last_synced_db_time') ?? '';
         
         bool needsSync = false;
         if (lastSyncedStr.isEmpty) {
           needsSync = true;
         } else {
           final lastSynced = DateTime.tryParse(lastSyncedStr);
-          if (lastSynced == null || driveTime.toUtc().isAfter(lastSynced.toUtc().add(const Duration(seconds: 2)))) {
+          if (lastSynced == null || remoteTime.isAfter(lastSynced.add(const Duration(seconds: 2)))) {
             needsSync = true;
           }
         }
 
         if (needsSync) {
-          debugPrint("Periodic sync: Newer backup found on Drive ($driveTime). Restoring...");
-          final restoredTime = await driveService.restoreDatabase(silentOnly: true);
-          final finalSyncedTime = restoredTime ?? driveTime;
+          debugPrint("Periodic sync: Newer backup found on Neon Postgres ($remoteTime). Restoring...");
+          final restoredTime = await neonService.restoreDatabase();
+          final finalSyncedTime = restoredTime ?? remoteTime;
           
-          await prefs.setString('last_synced_drive_time', finalSyncedTime.toIso8601String());
+          await prefs.setString('last_synced_db_time', finalSyncedTime.toIso8601String());
 
           if (SettingsProvider.instance != null) {
             await SettingsProvider.instance!.reloadSettings();
@@ -217,7 +217,7 @@ class AttendanceProvider with ChangeNotifier, WidgetsBindingObserver {
   void _triggerAutoBackup() {
     if (_autoSync) {
       _hasUnsavedChanges = true;
-      debugPrint("Data modified. Scheduled for next 5-second auto-sync upload.");
+      debugPrint("Data modified. Scheduled for next 2-hour auto-sync upload.");
     }
   }
 

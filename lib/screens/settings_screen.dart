@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:intl/intl.dart';
 import '../providers/settings_provider.dart';
@@ -8,7 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'dart:io';
-import '../services/drive_service.dart';
+import '../services/neon_service.dart';
 import '../database/database_helper.dart';
 import '../providers/attendance_provider.dart';
 import '../models/subject.dart';
@@ -30,12 +31,64 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   GoogleSignInAccount? _googleUser;
   String _appVersion = '1.1.3';
+  bool _testingConnection = false;
+  bool _neonConnected = false;
+  String _lastBackupStatus = 'None';
+  String _lastBackupTime = 'Never';
+  String _localDbSize = 'Unknown';
 
+  @override
   @override
   void initState() {
     super.initState();
     _checkGoogleSignInStatus();
     _loadAppVersion();
+    _loadBackupDetails();
+  }
+
+  Future<void> _loadBackupDetails() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    String dbSizeStr = 'Unknown';
+    try {
+      final dbFolder = await getDatabasesPath();
+      final dbPath = p.join(dbFolder, 'attendx_database');
+      final dbFile = File(dbPath);
+      if (await dbFile.exists()) {
+        final length = await dbFile.length();
+        dbSizeStr = '${(length / 1024).toStringAsFixed(1)} KB';
+      }
+    } catch (_) {}
+
+    final status = prefs.getString('last_db_backup_status') ?? 'None';
+    final timeStr = prefs.getString('last_db_backup_time') ?? '';
+    
+    String formattedTime = 'Never';
+    if (timeStr.isNotEmpty) {
+      final parsed = DateTime.tryParse(timeStr);
+      if (parsed != null) {
+        formattedTime = DateFormat('yyyy-MM-dd hh:mm a').format(parsed.toLocal());
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _lastBackupStatus = status;
+        _lastBackupTime = formattedTime;
+        _localDbSize = dbSizeStr;
+      });
+    }
+
+    setState(() {
+      _testingConnection = true;
+    });
+    final isConnected = await NeonService().testConnection();
+    if (mounted) {
+      setState(() {
+        _neonConnected = isConnected;
+        _testingConnection = false;
+      });
+    }
   }
 
   Future<void> _loadAppVersion() async {
@@ -51,7 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _checkGoogleSignInStatus() async {
     try {
-      final user = await DriveService.googleSignIn.signInSilently();
+      final user = await NeonService.googleSignIn.signInSilently();
       if (mounted) {
         setState(() {
           _googleUser = user;
@@ -64,12 +117,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _signInWithGoogle() async {
     try {
-      final user = await DriveService.googleSignIn.signIn();
+      final user = await NeonService.googleSignIn.signIn();
       if (mounted) {
         setState(() {
           _googleUser = user;
         });
       }
+      _loadBackupDetails();
     } catch (e) {
       _showGoogleSignInError(e);
     }
@@ -77,12 +131,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _signOutWithGoogle() async {
     try {
-      await DriveService.googleSignIn.signOut();
+      await NeonService.googleSignIn.signOut();
       if (mounted) {
         setState(() {
           _googleUser = null;
         });
       }
+      _loadBackupDetails();
     } catch (e) {
       debugPrint("Failed to sign out: $e");
     }
@@ -228,22 +283,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.cloud, color: Colors.blue),
-                  title: const Text('Backup to Google Drive'),
-                  subtitle: const Text('Safely backup to cloud'),
-                  onTap: () => _backupToDrive(context),
+                  title: const Text('Backup to Cloud Database'),
+                  subtitle: const Text('Safely backup to Neon PostgreSQL'),
+                  onTap: () => _backupToNeon(context),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.cloud_download, color: Colors.blue),
-                  title: const Text('Restore from Google Drive'),
-                  subtitle: const Text('Restore from cloud backup'),
-                  onTap: () => _restoreFromDrive(context),
+                  title: const Text('Restore from Cloud Database'),
+                  subtitle: const Text('Restore from Neon PostgreSQL backup'),
+                  onTap: () => _restoreFromNeon(context),
                 ),
-                 const Divider(height: 1),
+                const Divider(height: 1),
                 SwitchListTile.adaptive(
                   secondary: const Icon(Icons.sync, color: Colors.blue),
-                  title: const Text('Auto-Sync (Google Drive)'),
-                  subtitle: const Text('Sync data across devices automatically'),
+                  title: const Text('Auto-Sync (Cloud Database)'),
+                  subtitle: const Text('Automatically backup/sync every 2 hours'),
                   value: settings.autoSync,
                   onChanged: (val) async {
                     if (val) {
@@ -257,12 +312,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SnackBar(content: Text('Auto-sync enabled! Syncing database...')),
                         );
                         try {
-                          await DriveService().backupDatabase(silentOnly: true);
+                          await NeonService().backupDatabase();
                         } catch (_) {}
                       }
                     } else {
                       await settings.setAutoSync(false);
                     }
+                    _loadBackupDetails();
                   },
                 ),
                 const Divider(height: 1),
@@ -289,6 +345,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: () => _exportToCSV(context),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          _buildSectionHeader(context, 'Backup Details'),
+          Card(
+            elevation: 0,
+            color: theme.colorScheme.surfaceContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Connection Status:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      _testingConnection
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          : Row(
+                              children: [
+                                Icon(
+                                  _neonConnected ? Icons.cloud_done : Icons.cloud_off,
+                                  color: _neonConnected ? Colors.green : Colors.red,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _neonConnected ? 'Connected to Neon' : 'Offline / Disconnected',
+                                  style: TextStyle(
+                                    color: _neonConnected ? Colors.green : Colors.red,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Last Backup Status:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      Text(
+                        _lastBackupStatus,
+                        style: TextStyle(
+                          color: _lastBackupStatus == 'Success' || _lastBackupStatus.contains('Success')
+                              ? Colors.green
+                              : (_lastBackupStatus == 'None' ? Colors.grey : Colors.red),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Last Backup Time:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      Text(_lastBackupTime),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Local Database Size:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      Text(_localDbSize),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Account Info:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      Text(_googleUser != null ? _googleUser!.email : 'No email connection'),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -748,41 +885,117 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // --- Drive Backup ---
-  Future<void> _backupToDrive(BuildContext context) async {
+  // --- Neon Cloud Backup & Restore ---
+  Future<void> _backupToNeon(BuildContext context) async {
     if (_googleUser == null) {
       await _signInWithGoogle();
       if (_googleUser == null) return;
     }
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Uploading database to Neon...'),
+          ],
+        ),
+      ),
+    );
+
     try {
-      final driveService = DriveService();
-      await driveService.backupDatabase();
+      final neonService = NeonService();
+      await neonService.backupDatabase();
+      
       if (context.mounted) {
+        Navigator.pop(context); // Pop loading dialog
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backed up to Google Drive successfully!')),
+          const SnackBar(content: Text('Backed up to Neon database successfully!'), backgroundColor: Colors.green),
         );
       }
+      _loadBackupDetails();
     } catch (e) {
-      _showGoogleSignInError(e);
+      if (context.mounted) {
+        Navigator.pop(context); // Pop loading dialog
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Backup Failed'),
+            content: Text('Could not backup to Neon database. Error: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      _loadBackupDetails();
     }
   }
 
-  Future<void> _restoreFromDrive(BuildContext context) async {
+  Future<void> _restoreFromNeon(BuildContext context) async {
     if (_googleUser == null) {
       await _signInWithGoogle();
       if (_googleUser == null) return;
     }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore Data'),
+        content: const Text(
+          'This will overwrite your local database with the database stored in Neon. '
+          'Any unsaved changes on this device will be lost. Proceed?'
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Restoring database from Neon...'),
+          ],
+        ),
+      ),
+    );
+
     try {
-      final driveService = DriveService();
-      await driveService.restoreDatabase();
+      final neonService = NeonService();
+      await neonService.restoreDatabase();
+      
       if (context.mounted) {
+        Navigator.pop(context); // Pop loading dialog
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
             title: const Text('Restore Complete'),
-            content: const Text(
-                'Data restored from Drive successfully. Please restart the app for changes to take effect.'),
+            content: const Text('Data restored from Neon successfully. Please restart the app for changes to take effect.'),
             actions: [
               TextButton(
                 onPressed: () {
@@ -796,8 +1009,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         );
       }
+      _loadBackupDetails();
     } catch (e) {
-      _showGoogleSignInError(e);
+      if (context.mounted) {
+        Navigator.pop(context); // Pop loading dialog
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Restore Failed'),
+            content: Text('Could not restore from Neon database. Error: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      _loadBackupDetails();
     }
   }
 
