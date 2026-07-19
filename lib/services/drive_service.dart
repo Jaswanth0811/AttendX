@@ -60,12 +60,23 @@ class DriveService {
       if (driveApi == null) return null;
 
       final fileName = await _getBackupFileName();
-      final query = "name = '$fileName' and 'appDataFolder' in parents";
-      final fileList = await driveApi.files.list(
+      var query = "name = '$fileName' and 'appDataFolder' in parents";
+      var fileList = await driveApi.files.list(
         spaces: 'appDataFolder',
         q: query,
         $fields: 'files(id, modifiedTime)',
       );
+
+      // Fallback to legacy file name
+      if ((fileList.files == null || fileList.files!.isEmpty) && fileName != 'attendx_database_backup.db') {
+        const legacyFileName = 'attendx_database_backup.db';
+        query = "name = '$legacyFileName' and 'appDataFolder' in parents";
+        fileList = await driveApi.files.list(
+          spaces: 'appDataFolder',
+          q: query,
+          $fields: 'files(id, modifiedTime)',
+        );
+      }
 
       if (fileList.files != null && fileList.files!.isNotEmpty) {
         return fileList.files!.first.modifiedTime;
@@ -129,12 +140,23 @@ class DriveService {
     if (driveApi == null) throw Exception("User didn't sign in.");
 
     final fileName = await _getBackupFileName();
-    final query = "name = '$fileName' and 'appDataFolder' in parents";
-    final fileList = await driveApi.files.list(
+    var query = "name = '$fileName' and 'appDataFolder' in parents";
+    var fileList = await driveApi.files.list(
       spaces: 'appDataFolder',
       q: query,
       $fields: 'files(id, name, modifiedTime)',
     );
+
+    // Fallback to legacy file name
+    if ((fileList.files == null || fileList.files!.isEmpty) && fileName != 'attendx_database_backup.db') {
+      const legacyFileName = 'attendx_database_backup.db';
+      query = "name = '$legacyFileName' and 'appDataFolder' in parents";
+      fileList = await driveApi.files.list(
+        spaces: 'appDataFolder',
+        q: query,
+        $fields: 'files(id, name, modifiedTime)',
+      );
+    }
 
     if (fileList.files == null || fileList.files!.isEmpty) {
       throw Exception("No backup found on Google Drive.");
